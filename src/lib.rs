@@ -11,14 +11,18 @@
 //! - [`stats`] — Descriptive statistics with numerical stability guarantees
 //! - [`distributions`] — Probability distributions (Uniform, Triangular, PERT, Normal, LogNormal)
 //! - [`special`] — Special mathematical functions (normal CDF, inverse normal CDF)
+//! - [`random`] — Random number generation, shuffling, and weighted sampling
+//! - [`collections`] — Specialized data structures (Union-Find)
 //!
 //! ## Design Philosophy
 //!
 //! - **Numerical stability first**: Welford's algorithm for variance,
 //!   Neumaier summation for accumulation
-//! - **No unnecessary dependencies**: Pure Rust for core math
+//! - **Reproducibility**: Seeded RNG support for deterministic experiments
 //! - **Property-based testing**: Mathematical invariants verified via proptest
 
+pub mod collections;
 pub mod distributions;
+pub mod random;
 pub mod special;
 pub mod stats;

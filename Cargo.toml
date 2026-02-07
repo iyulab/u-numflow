@@ -10,6 +10,7 @@ keywords = ["statistics", "probability", "optimization", "mathematics"]
 categories = ["mathematics", "science"]
 
 [dependencies]
+rand = "0.9"
 
 [dev-dependencies]
 proptest = "1.4"
