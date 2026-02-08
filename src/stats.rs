@@ -209,7 +209,7 @@ pub fn median(data: &[f64]) -> Option<f64> {
         return None;
     }
     let mut sorted = data.to_vec();
-    sorted.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
+    sorted.sort_unstable_by(|a, b| a.partial_cmp(b).expect("NaN filtered above"));
     let n = sorted.len();
     if n % 2 == 1 {
         Some(sorted[n / 2])
@@ -255,7 +255,7 @@ pub fn quantile(data: &[f64], p: f64) -> Option<f64> {
         return None;
     }
     let mut sorted = data.to_vec();
-    sorted.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
+    sorted.sort_unstable_by(|a, b| a.partial_cmp(b).expect("NaN filtered above"));
     quantile_sorted(&sorted, p)
 }
 

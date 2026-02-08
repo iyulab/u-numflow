@@ -194,7 +194,7 @@ impl WeightedSampler {
         let threshold = rng.random_range(0.0..self.total);
         match self
             .cumulative
-            .binary_search_by(|c| c.partial_cmp(&threshold).unwrap())
+            .binary_search_by(|c| c.partial_cmp(&threshold).expect("cumulative values are finite"))
         {
             Ok(i) => i,
             Err(i) => i.min(self.cumulative.len() - 1),
