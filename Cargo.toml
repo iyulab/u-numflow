@@ -8,6 +8,7 @@ description = "Mathematical primitives for the U-Engine ecosystem: statistics, p
 repository = "https://github.com/iyulab/u-optim"
 keywords = ["statistics", "probability", "optimization", "mathematics"]
 categories = ["mathematics", "science"]
+readme = "README.md"
 
 [dependencies]
 rand = "0.9"
