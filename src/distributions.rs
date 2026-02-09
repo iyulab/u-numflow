@@ -705,6 +705,313 @@ impl Weibull {
     }
 }
 
+// ============================================================================
+// Exponential Distribution
+// ============================================================================
+
+/// Exponential distribution with rate parameter λ.
+///
+/// Models the time between events in a Poisson process. The rate λ > 0
+/// determines the expected frequency; the mean is 1/λ.
+///
+/// # Examples
+///
+/// ```
+/// use u_optim::distributions::Exponential;
+///
+/// let exp = Exponential::new(0.5).unwrap();
+/// assert!((exp.mean() - 2.0).abs() < 1e-10);
+/// assert!((exp.cdf(2.0) - (1.0 - (-1.0_f64).exp())).abs() < 1e-10);
+/// ```
+#[derive(Debug, Clone, Copy)]
+pub struct Exponential {
+    rate: f64,
+}
+
+impl Exponential {
+    /// Creates a new Exponential distribution with the given rate λ.
+    ///
+    /// Returns an error if λ ≤ 0 or λ is not finite.
+    pub fn new(rate: f64) -> Result<Self, DistributionError> {
+        if !rate.is_finite() || rate <= 0.0 {
+            return Err(DistributionError::InvalidParameters(format!(
+                "Exponential rate must be positive and finite, got {rate}"
+            )));
+        }
+        Ok(Self { rate })
+    }
+
+    /// Rate parameter λ.
+    pub fn rate(&self) -> f64 {
+        self.rate
+    }
+
+    /// Mean = 1/λ.
+    pub fn mean(&self) -> f64 {
+        1.0 / self.rate
+    }
+
+    /// Variance = 1/λ².
+    pub fn variance(&self) -> f64 {
+        1.0 / (self.rate * self.rate)
+    }
+
+    /// PDF: f(x) = λ exp(−λx) for x ≥ 0, 0 otherwise.
+    pub fn pdf(&self, x: f64) -> f64 {
+        if x < 0.0 {
+            0.0
+        } else {
+            self.rate * (-self.rate * x).exp()
+        }
+    }
+
+    /// CDF: F(x) = 1 − exp(−λx) for x ≥ 0, 0 otherwise.
+    pub fn cdf(&self, x: f64) -> f64 {
+        if x < 0.0 {
+            0.0
+        } else {
+            1.0 - (-self.rate * x).exp()
+        }
+    }
+
+    /// Quantile (inverse CDF): x = −ln(1−p)/λ.
+    ///
+    /// Returns `None` if p is not in [0, 1].
+    pub fn quantile(&self, p: f64) -> Option<f64> {
+        if !(0.0..=1.0).contains(&p) {
+            return None;
+        }
+        if p == 1.0 {
+            return Some(f64::INFINITY);
+        }
+        Some(-(1.0 - p).ln() / self.rate)
+    }
+
+    /// Hazard rate (failure rate): h(x) = λ (constant).
+    pub fn hazard_rate(&self) -> f64 {
+        self.rate
+    }
+
+    /// Survival function: S(x) = exp(−λx).
+    pub fn survival(&self, x: f64) -> f64 {
+        1.0 - self.cdf(x)
+    }
+}
+
+// ============================================================================
+// Gamma Distribution
+// ============================================================================
+
+/// Gamma distribution with shape α and rate β (or equivalently scale θ = 1/β).
+///
+/// Uses the (shape, rate) parametrization: X ~ Gamma(α, β).
+///
+/// # PDF
+///
+/// f(x) = β^α / Γ(α) · x^(α−1) · exp(−βx) for x > 0
+///
+/// # Examples
+///
+/// ```
+/// use u_optim::distributions::GammaDistribution;
+///
+/// let g = GammaDistribution::new(2.0, 1.0).unwrap();
+/// assert!((g.mean() - 2.0).abs() < 1e-10);
+/// assert!((g.variance() - 2.0).abs() < 1e-10);
+/// ```
+///
+/// # Reference
+///
+/// Johnson, N.L., Kotz, S. & Balakrishnan, N. (1994). *Continuous Univariate
+/// Distributions*, Vol. 1, 2nd ed. Wiley.
+#[derive(Debug, Clone, Copy)]
+pub struct GammaDistribution {
+    shape: f64, // α > 0
+    rate: f64,  // β > 0
+}
+
+impl GammaDistribution {
+    /// Creates a Gamma(α, β) distribution with shape α and rate β.
+    ///
+    /// Returns an error if α ≤ 0, β ≤ 0, or either is not finite.
+    pub fn new(shape: f64, rate: f64) -> Result<Self, DistributionError> {
+        if !shape.is_finite() || shape <= 0.0 || !rate.is_finite() || rate <= 0.0 {
+            return Err(DistributionError::InvalidParameters(format!(
+                "Gamma shape and rate must be positive and finite, got shape={shape}, rate={rate}"
+            )));
+        }
+        Ok(Self { shape, rate })
+    }
+
+    /// Creates a Gamma distribution from shape and scale θ = 1/β.
+    pub fn from_shape_scale(shape: f64, scale: f64) -> Result<Self, DistributionError> {
+        if !scale.is_finite() || scale <= 0.0 {
+            return Err(DistributionError::InvalidParameters(format!(
+                "Gamma scale must be positive and finite, got {scale}"
+            )));
+        }
+        Self::new(shape, 1.0 / scale)
+    }
+
+    /// Shape parameter α.
+    pub fn shape(&self) -> f64 {
+        self.shape
+    }
+
+    /// Rate parameter β.
+    pub fn rate(&self) -> f64 {
+        self.rate
+    }
+
+    /// Scale parameter θ = 1/β.
+    pub fn scale(&self) -> f64 {
+        1.0 / self.rate
+    }
+
+    /// Mean = α/β.
+    pub fn mean(&self) -> f64 {
+        self.shape / self.rate
+    }
+
+    /// Variance = α/β².
+    pub fn variance(&self) -> f64 {
+        self.shape / (self.rate * self.rate)
+    }
+
+    /// Mode = (α−1)/β for α ≥ 1, 0 for α < 1.
+    pub fn mode(&self) -> f64 {
+        if self.shape >= 1.0 {
+            (self.shape - 1.0) / self.rate
+        } else {
+            0.0
+        }
+    }
+
+    /// PDF: f(x) = β^α / Γ(α) · x^(α−1) · exp(−βx) for x > 0.
+    pub fn pdf(&self, x: f64) -> f64 {
+        if x <= 0.0 {
+            if x == 0.0 && self.shape < 1.0 {
+                return f64::INFINITY;
+            }
+            return 0.0;
+        }
+        let log_pdf = self.shape * self.rate.ln() - ln_gamma(self.shape)
+            + (self.shape - 1.0) * x.ln()
+            - self.rate * x;
+        log_pdf.exp()
+    }
+
+    /// CDF: F(x) = γ(α, βx) / Γ(α) = regularized lower incomplete gamma.
+    ///
+    /// Uses series expansion for small x or continued fraction for large x.
+    pub fn cdf(&self, x: f64) -> f64 {
+        if x <= 0.0 {
+            return 0.0;
+        }
+        regularized_lower_gamma(self.shape, self.rate * x)
+    }
+
+    /// Quantile (inverse CDF) via Newton-Raphson iteration.
+    ///
+    /// Returns `None` if p is not in [0, 1].
+    pub fn quantile(&self, p: f64) -> Option<f64> {
+        if !(0.0..=1.0).contains(&p) {
+            return None;
+        }
+        if p == 0.0 {
+            return Some(0.0);
+        }
+        if p == 1.0 {
+            return Some(f64::INFINITY);
+        }
+
+        // Initial guess: Wilson-Hilferty approximation
+        let z = crate::special::inverse_normal_cdf(p);
+        let v = 1.0 / (9.0 * self.shape);
+        let chi2_approx = self.shape * (1.0 - v + z * v.sqrt()).powi(3).max(0.001);
+        let mut x = chi2_approx / self.rate;
+
+        // Newton-Raphson refinement
+        for _ in 0..50 {
+            let f = self.cdf(x) - p;
+            let fp = self.pdf(x);
+            if fp < 1e-300 {
+                break;
+            }
+            let step = f / fp;
+            x = (x - step).max(1e-15);
+            if step.abs() < 1e-12 * x {
+                break;
+            }
+        }
+
+        Some(x)
+    }
+}
+
+/// Regularized lower incomplete gamma function P(a, x) = γ(a, x) / Γ(a).
+///
+/// Uses series expansion for x < a + 1, continued fraction otherwise.
+fn regularized_lower_gamma(a: f64, x: f64) -> f64 {
+    if x <= 0.0 {
+        return 0.0;
+    }
+    if x < a + 1.0 {
+        // Series expansion
+        gamma_series(a, x)
+    } else {
+        // Continued fraction (complement)
+        1.0 - gamma_cf(a, x)
+    }
+}
+
+/// Series expansion for the regularized lower incomplete gamma.
+fn gamma_series(a: f64, x: f64) -> f64 {
+    let mut term = 1.0 / a;
+    let mut sum = term;
+    let mut ap = a;
+
+    for _ in 0..200 {
+        ap += 1.0;
+        term *= x / ap;
+        sum += term;
+        if term.abs() < sum.abs() * 1e-14 {
+            break;
+        }
+    }
+
+    sum * (-x + a * x.ln() - ln_gamma(a)).exp()
+}
+
+/// Continued fraction for the upper incomplete gamma Q(a, x) = 1 − P(a, x).
+fn gamma_cf(a: f64, x: f64) -> f64 {
+    let mut b = x + 1.0 - a;
+    let mut c = 1.0 / 1e-30;
+    let mut d = 1.0 / b;
+    let mut h = d;
+
+    for i in 1..=200 {
+        let an = -(i as f64) * (i as f64 - a);
+        b += 2.0;
+        d = an * d + b;
+        if d.abs() < 1e-30 {
+            d = 1e-30;
+        }
+        c = b + an / c;
+        if c.abs() < 1e-30 {
+            c = 1e-30;
+        }
+        d = 1.0 / d;
+        let delta = d * c;
+        h *= delta;
+        if (delta - 1.0).abs() < 1e-14 {
+            break;
+        }
+    }
+
+    h * (-x + a * x.ln() - ln_gamma(a)).exp()
+}
+
 /// Gamma function Γ(x) = exp(ln_gamma(x)).
 ///
 /// Uses the Lanczos approximation via [`ln_gamma`].
@@ -1213,6 +1520,152 @@ mod tests {
         assert!(Weibull::new(1.0, f64::INFINITY).is_err());
     }
 
+    // --- Exponential ---
+
+    #[test]
+    fn test_exponential_basic() {
+        let e = Exponential::new(0.5).unwrap();
+        assert!((e.rate() - 0.5).abs() < 1e-10);
+        assert!((e.mean() - 2.0).abs() < 1e-10);
+        assert!((e.variance() - 4.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_exponential_pdf() {
+        let e = Exponential::new(1.0).unwrap();
+        assert!((e.pdf(0.0) - 1.0).abs() < 1e-10);
+        assert!((e.pdf(1.0) - (-1.0_f64).exp()).abs() < 1e-10);
+        assert_eq!(e.pdf(-1.0), 0.0);
+    }
+
+    #[test]
+    fn test_exponential_cdf() {
+        let e = Exponential::new(1.0).unwrap();
+        assert_eq!(e.cdf(-1.0), 0.0);
+        assert_eq!(e.cdf(0.0), 0.0);
+        assert!((e.cdf(1.0) - (1.0 - (-1.0_f64).exp())).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_exponential_quantile() {
+        let e = Exponential::new(2.0).unwrap();
+        assert_eq!(e.quantile(0.0), Some(0.0));
+        assert_eq!(e.quantile(1.0), Some(f64::INFINITY));
+        let q = e.quantile(0.5).unwrap();
+        // Median = ln(2)/λ = ln(2)/2
+        assert!((q - 2.0_f64.ln() / 2.0).abs() < 1e-10);
+        assert!(e.quantile(-0.1).is_none());
+        assert!(e.quantile(1.1).is_none());
+    }
+
+    #[test]
+    fn test_exponential_quantile_roundtrip() {
+        let e = Exponential::new(3.0).unwrap();
+        for &p in &[0.01, 0.1, 0.25, 0.5, 0.75, 0.9, 0.99] {
+            let x = e.quantile(p).unwrap();
+            let p_back = e.cdf(x);
+            assert!((p_back - p).abs() < 1e-10, "p={p}, x={x}, p_back={p_back}");
+        }
+    }
+
+    #[test]
+    fn test_exponential_memoryless() {
+        // P(X > s+t | X > s) = P(X > t)
+        let e = Exponential::new(1.5).unwrap();
+        let s = 2.0;
+        let t = 3.0;
+        let lhs = e.survival(s + t) / e.survival(s);
+        let rhs = e.survival(t);
+        assert!((lhs - rhs).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_exponential_invalid() {
+        assert!(Exponential::new(0.0).is_err());
+        assert!(Exponential::new(-1.0).is_err());
+        assert!(Exponential::new(f64::NAN).is_err());
+        assert!(Exponential::new(f64::INFINITY).is_err());
+    }
+
+    // --- Gamma Distribution ---
+
+    #[test]
+    fn test_gamma_basic() {
+        let g = GammaDistribution::new(2.0, 1.0).unwrap();
+        assert!((g.shape() - 2.0).abs() < 1e-10);
+        assert!((g.rate() - 1.0).abs() < 1e-10);
+        assert!((g.scale() - 1.0).abs() < 1e-10);
+        assert!((g.mean() - 2.0).abs() < 1e-10);
+        assert!((g.variance() - 2.0).abs() < 1e-10);
+        assert!((g.mode() - 1.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_gamma_from_shape_scale() {
+        let g = GammaDistribution::from_shape_scale(3.0, 2.0).unwrap();
+        assert!((g.shape() - 3.0).abs() < 1e-10);
+        assert!((g.rate() - 0.5).abs() < 1e-10);
+        assert!((g.mean() - 6.0).abs() < 1e-10); // α/β = 3/0.5 = 6
+    }
+
+    #[test]
+    fn test_gamma_pdf_integral() {
+        // Numerical integration should ≈ 1
+        let g = GammaDistribution::new(3.0, 2.0).unwrap();
+        let n = 20_000;
+        let dt = 20.0 / n as f64;
+        let integral: f64 = (0..n)
+            .map(|i| {
+                let x = (i as f64 + 0.5) * dt;
+                g.pdf(x) * dt
+            })
+            .sum();
+        assert!((integral - 1.0).abs() < 0.01, "PDF integral = {integral}");
+    }
+
+    #[test]
+    fn test_gamma_cdf_known() {
+        // Gamma(1, 1) = Exponential(1): CDF(1) = 1 - e^{-1}
+        let g = GammaDistribution::new(1.0, 1.0).unwrap();
+        let expected = 1.0 - (-1.0_f64).exp();
+        assert!((g.cdf(1.0) - expected).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_gamma_cdf_chi2() {
+        // Chi-squared(k) = Gamma(k/2, 1/2)
+        // For k=2, CDF(x) = 1 - exp(-x/2)
+        let g = GammaDistribution::new(1.0, 0.5).unwrap(); // Gamma(1, 0.5) = Exp(0.5)
+        let x = 4.0;
+        let expected = 1.0 - (-0.5_f64 * x).exp();
+        assert!((g.cdf(x) - expected).abs() < 1e-8, "CDF({x}) = {} vs {expected}", g.cdf(x));
+    }
+
+    #[test]
+    fn test_gamma_quantile_roundtrip() {
+        let g = GammaDistribution::new(5.0, 2.0).unwrap();
+        for &p in &[0.01, 0.1, 0.25, 0.5, 0.75, 0.9, 0.99] {
+            let x = g.quantile(p).unwrap();
+            let p_back = g.cdf(x);
+            assert!((p_back - p).abs() < 1e-6, "p={p}, x={x}, p_back={p_back}");
+        }
+    }
+
+    #[test]
+    fn test_gamma_mode_small_shape() {
+        let g = GammaDistribution::new(0.5, 1.0).unwrap();
+        assert_eq!(g.mode(), 0.0); // α < 1
+    }
+
+    #[test]
+    fn test_gamma_invalid() {
+        assert!(GammaDistribution::new(0.0, 1.0).is_err());
+        assert!(GammaDistribution::new(-1.0, 1.0).is_err());
+        assert!(GammaDistribution::new(1.0, 0.0).is_err());
+        assert!(GammaDistribution::new(1.0, -1.0).is_err());
+        assert!(GammaDistribution::new(f64::NAN, 1.0).is_err());
+    }
+
     #[test]
     fn test_weibull_mean_variance_known() {
         // β=3.6, η=1000: known engineering example
@@ -1416,6 +1869,51 @@ mod proptests {
         ) {
             let w = Weibull::new(shape, scale).unwrap();
             prop_assert!(w.variance() > 0.0, "variance must be positive");
+        }
+
+        // --- Exponential ---
+
+        #[test]
+        fn exponential_cdf_in_01(
+            rate in 0.01_f64..10.0,
+            x in 0.0_f64..100.0,
+        ) {
+            let e = Exponential::new(rate).unwrap();
+            let c = e.cdf(x);
+            prop_assert!((0.0..=1.0).contains(&c), "CDF({x}) = {c}");
+        }
+
+        #[test]
+        fn exponential_quantile_roundtrip(
+            rate in 0.01_f64..10.0,
+            p in 0.001_f64..0.999,
+        ) {
+            let e = Exponential::new(rate).unwrap();
+            let x = e.quantile(p).unwrap();
+            let p_back = e.cdf(x);
+            prop_assert!((p_back - p).abs() < 1e-10);
+        }
+
+        // --- Gamma ---
+
+        #[test]
+        fn gamma_cdf_in_01(
+            shape in 0.5_f64..10.0,
+            rate in 0.1_f64..10.0,
+            x in 0.001_f64..50.0,
+        ) {
+            let g = GammaDistribution::new(shape, rate).unwrap();
+            let c = g.cdf(x);
+            prop_assert!((0.0..=1.0).contains(&c), "CDF({x}) = {c}");
+        }
+
+        #[test]
+        fn gamma_variance_positive(
+            shape in 0.1_f64..10.0,
+            rate in 0.1_f64..10.0,
+        ) {
+            let g = GammaDistribution::new(shape, rate).unwrap();
+            prop_assert!(g.variance() > 0.0, "variance must be positive");
         }
     }
 }
