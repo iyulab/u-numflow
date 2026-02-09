@@ -20,7 +20,7 @@ const FRAC_1_SQRT_2PI: f64 = 0.3989422804014326779399460599343818684758586311649
 ///
 /// # Examples
 /// ```
-/// use u_numerics::special::standard_normal_cdf;
+/// use u_numflow::special::standard_normal_cdf;
 /// assert!((standard_normal_cdf(0.0) - 0.5).abs() < 1e-7);
 /// assert!((standard_normal_cdf(1.96) - 0.975).abs() < 1e-3);
 /// ```
@@ -78,7 +78,7 @@ pub fn standard_normal_cdf(x: f64) -> f64 {
 ///
 /// # Examples
 /// ```
-/// use u_numerics::special::inverse_normal_cdf;
+/// use u_numflow::special::inverse_normal_cdf;
 /// assert!((inverse_normal_cdf(0.5)).abs() < 1e-4);
 /// assert!((inverse_normal_cdf(0.975) - 1.96).abs() < 0.01);
 /// ```
@@ -116,7 +116,7 @@ pub fn inverse_normal_cdf(p: f64) -> f64 {
 ///
 /// # Examples
 /// ```
-/// use u_numerics::special::standard_normal_pdf;
+/// use u_numflow::special::standard_normal_pdf;
 /// let peak = standard_normal_pdf(0.0);
 /// assert!((peak - 0.3989422804014327).abs() < 1e-15);
 /// ```
@@ -137,7 +137,7 @@ pub fn standard_normal_pdf(x: f64) -> f64 {
 ///
 /// # Examples
 /// ```
-/// use u_numerics::special::ln_gamma;
+/// use u_numflow::special::ln_gamma;
 /// // Γ(5) = 24
 /// assert!((ln_gamma(5.0) - 24.0_f64.ln()).abs() < 1e-10);
 /// ```
@@ -175,7 +175,7 @@ pub fn ln_gamma(x: f64) -> f64 {
 ///
 /// # Examples
 /// ```
-/// use u_numerics::special::gamma;
+/// use u_numflow::special::gamma;
 /// // Γ(5) = 4! = 24
 /// assert!((gamma(5.0) - 24.0).abs() < 1e-8);
 /// // Γ(0.5) = √π

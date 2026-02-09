@@ -721,7 +721,7 @@ impl Weibull {
 /// # Examples
 ///
 /// ```
-/// use u_numerics::distributions::Exponential;
+/// use u_numflow::distributions::Exponential;
 ///
 /// let exp = Exponential::new(0.5).unwrap();
 /// assert!((exp.mean() - 2.0).abs() < 1e-10);
@@ -817,7 +817,7 @@ impl Exponential {
 /// # Examples
 ///
 /// ```
-/// use u_numerics::distributions::GammaDistribution;
+/// use u_numflow::distributions::GammaDistribution;
 ///
 /// let g = GammaDistribution::new(2.0, 1.0).unwrap();
 /// assert!((g.mean() - 2.0).abs() < 1e-10);
@@ -1153,7 +1153,7 @@ fn beta_cf(x: f64, a: f64, b: f64) -> f64 {
 /// # Examples
 ///
 /// ```
-/// use u_numerics::distributions::BetaDistribution;
+/// use u_numflow::distributions::BetaDistribution;
 ///
 /// let beta = BetaDistribution::new(2.0, 5.0).unwrap();
 /// assert!((beta.mean() - 2.0 / 7.0).abs() < 1e-10);
@@ -1291,7 +1291,7 @@ impl BetaDistribution {
 /// # Examples
 ///
 /// ```
-/// use u_numerics::distributions::ChiSquared;
+/// use u_numflow::distributions::ChiSquared;
 ///
 /// let chi2 = ChiSquared::new(3.0).unwrap();
 /// assert!((chi2.mean() - 3.0).abs() < 1e-10);

@@ -21,7 +21,7 @@
 ///
 /// # Examples
 /// ```
-/// use u_numerics::collections::UnionFind;
+/// use u_numflow::collections::UnionFind;
 ///
 /// let mut uf = UnionFind::new(5);
 /// assert_eq!(uf.component_count(), 5);

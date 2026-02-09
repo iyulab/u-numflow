@@ -27,7 +27,7 @@
 ///
 /// # Examples
 /// ```
-/// use u_numerics::stats::mean;
+/// use u_numflow::stats::mean;
 /// let v = [1.0, 2.0, 3.0, 4.0, 5.0];
 /// assert!((mean(&v).unwrap() - 3.0).abs() < 1e-15);
 /// ```
@@ -61,7 +61,7 @@ pub fn mean(data: &[f64]) -> Option<f64> {
 ///
 /// # Examples
 /// ```
-/// use u_numerics::stats::variance;
+/// use u_numflow::stats::variance;
 /// let v = [2.0, 4.0, 4.0, 4.0, 5.0, 5.0, 7.0, 9.0];
 /// assert!((variance(&v).unwrap() - 4.571428571428571).abs() < 1e-10);
 /// ```
@@ -88,7 +88,7 @@ pub fn variance(data: &[f64]) -> Option<f64> {
 ///
 /// # Examples
 /// ```
-/// use u_numerics::stats::population_variance;
+/// use u_numflow::stats::population_variance;
 /// let v = [2.0, 4.0, 4.0, 4.0, 5.0, 5.0, 7.0, 9.0];
 /// assert!((population_variance(&v).unwrap() - 4.0).abs() < 1e-10);
 /// ```
@@ -115,7 +115,7 @@ pub fn population_variance(data: &[f64]) -> Option<f64> {
 ///
 /// # Examples
 /// ```
-/// use u_numerics::stats::std_dev;
+/// use u_numflow::stats::std_dev;
 /// let v = [2.0, 4.0, 4.0, 4.0, 5.0, 5.0, 7.0, 9.0];
 /// let sd = std_dev(&v).unwrap();
 /// assert!((sd - 2.138089935299395).abs() < 1e-10);
@@ -141,7 +141,7 @@ pub fn population_std_dev(data: &[f64]) -> Option<f64> {
 ///
 /// # Examples
 /// ```
-/// use u_numerics::stats::min;
+/// use u_numflow::stats::min;
 /// assert_eq!(min(&[3.0, 1.0, 4.0, 1.0, 5.0]), Some(1.0));
 /// ```
 pub fn min(data: &[f64]) -> Option<f64> {
@@ -164,7 +164,7 @@ pub fn min(data: &[f64]) -> Option<f64> {
 ///
 /// # Examples
 /// ```
-/// use u_numerics::stats::max;
+/// use u_numflow::stats::max;
 /// assert_eq!(max(&[3.0, 1.0, 4.0, 1.0, 5.0]), Some(5.0));
 /// ```
 pub fn max(data: &[f64]) -> Option<f64> {
@@ -193,7 +193,7 @@ pub fn max(data: &[f64]) -> Option<f64> {
 ///
 /// # Examples
 /// ```
-/// use u_numerics::stats::median;
+/// use u_numflow::stats::median;
 /// assert_eq!(median(&[3.0, 1.0, 2.0]), Some(2.0));
 /// assert_eq!(median(&[4.0, 1.0, 3.0, 2.0]), Some(2.5));
 /// ```
@@ -237,7 +237,7 @@ pub fn median(data: &[f64]) -> Option<f64> {
 ///
 /// # Examples
 /// ```
-/// use u_numerics::stats::quantile;
+/// use u_numflow::stats::quantile;
 /// let data = [1.0, 2.0, 3.0, 4.0, 5.0];
 /// assert_eq!(quantile(&data, 0.0), Some(1.0));
 /// assert_eq!(quantile(&data, 1.0), Some(5.0));
@@ -339,7 +339,7 @@ pub fn kahan_sum(data: &[f64]) -> f64 {
 ///
 /// # Examples
 /// ```
-/// use u_numerics::stats::WelfordAccumulator;
+/// use u_numflow::stats::WelfordAccumulator;
 /// let mut acc = WelfordAccumulator::new();
 /// for &x in &[2.0, 4.0, 4.0, 4.0, 5.0, 5.0, 7.0, 9.0] {
 ///     acc.update(x);

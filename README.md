@@ -1,4 +1,4 @@
-# u-numerics
+# u-numflow
 
 **Domain-agnostic mathematical primitives in Rust**
 
@@ -7,7 +7,7 @@
 
 ## Overview
 
-u-numerics provides foundational mathematical, statistical, and probabilistic building blocks. Entirely domain-agnostic with no external dependencies beyond `rand`.
+u-numflow provides foundational mathematical, statistical, and probabilistic building blocks. Entirely domain-agnostic with no external dependencies beyond `rand`.
 
 ## Modules
 
@@ -29,7 +29,7 @@ u-numerics provides foundational mathematical, statistical, and probabilistic bu
 
 ```toml
 [dependencies]
-u-numerics = { git = "https://github.com/iyulab/u-numerics" }
+u-numflow = { git = "https://github.com/iyulab/u-numflow" }
 ```
 
 ```rust

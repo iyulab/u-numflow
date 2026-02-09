@@ -1,4 +1,4 @@
-//! # u-numerics
+//! # u-numflow
 //!
 //! Mathematical primitives for the U-Engine ecosystem.
 //!

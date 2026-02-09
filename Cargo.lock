@@ -248,7 +248,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "u-numerics"
+name = "u-numflow"
 version = "0.1.0"
 dependencies = [
  "proptest",

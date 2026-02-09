@@ -1,11 +1,11 @@
 [package]
-name = "u-numerics"
+name = "u-numflow"
 version = "0.1.0"
 edition = "2021"
 authors = ["iyulab"]
 license = "MIT"
 description = "Mathematical primitives for the U-Engine ecosystem: statistics, probability, random sampling, and collections."
-repository = "https://github.com/iyulab/u-numerics"
+repository = "https://github.com/iyulab/u-numflow"
 keywords = ["statistics", "probability", "optimization", "mathematics"]
 categories = ["mathematics", "science"]
 readme = "README.md"

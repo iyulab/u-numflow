@@ -18,7 +18,7 @@ use rand::Rng;
 ///
 /// # Examples
 /// ```
-/// use u_numerics::random::create_rng;
+/// use u_numflow::random::create_rng;
 /// use rand::Rng;
 /// let mut rng = create_rng(42);
 /// let x: f64 = rng.random();
@@ -46,7 +46,7 @@ pub fn create_rng(seed: u64) -> rand::rngs::SmallRng {
 ///
 /// # Examples
 /// ```
-/// use u_numerics::random::{create_rng, shuffle};
+/// use u_numflow::random::{create_rng, shuffle};
 /// let mut v = vec![1, 2, 3, 4, 5];
 /// let mut rng = create_rng(42);
 /// shuffle(&mut v, &mut rng);
@@ -76,7 +76,7 @@ pub fn shuffle<T, R: Rng>(slice: &mut [T], rng: &mut R) {
 ///
 /// # Examples
 /// ```
-/// use u_numerics::random::{create_rng, shuffled_indices};
+/// use u_numflow::random::{create_rng, shuffled_indices};
 /// let mut rng = create_rng(42);
 /// let indices = shuffled_indices(5, &mut rng);
 /// assert_eq!(indices.len(), 5);
@@ -103,7 +103,7 @@ pub fn shuffled_indices<R: Rng>(n: usize, rng: &mut R) -> Vec<usize> {
 ///
 /// # Examples
 /// ```
-/// use u_numerics::random::{create_rng, weighted_choose};
+/// use u_numflow::random::{create_rng, weighted_choose};
 /// let mut rng = create_rng(42);
 /// let weights = [1.0, 2.0, 3.0]; // index 2 is most likely
 /// let idx = weighted_choose(&weights, &mut rng).unwrap();
@@ -148,7 +148,7 @@ pub fn weighted_choose<R: Rng>(weights: &[f64], rng: &mut R) -> Option<usize> {
 ///
 /// # Examples
 /// ```
-/// use u_numerics::random::{create_rng, WeightedSampler};
+/// use u_numflow::random::{create_rng, WeightedSampler};
 /// let weights = vec![1.0, 2.0, 3.0, 4.0];
 /// let sampler = WeightedSampler::new(&weights).unwrap();
 /// let mut rng = create_rng(42);
