@@ -283,6 +283,173 @@ pub fn quantile_sorted(sorted_data: &[f64], p: f64) -> Option<f64> {
     }
 }
 
+/// Computes Fisher's adjusted sample skewness (G₁) with bias correction.
+///
+/// # Formula
+/// ```text
+/// G₁ = [√(n(n−1)) / (n−2)] × (m₃ / m₂^{3/2})
+/// ```
+/// where `m₂`, `m₃` are the biased second and third central moments.
+///
+/// This matches Excel `SKEW()` and `scipy.stats.skew(bias=False)`.
+///
+/// # Algorithm
+/// Two-pass: first computes the mean (Kahan sum), then accumulates
+/// central moments in a single sweep.
+///
+/// Reference: Joanes & Gill (1998), "Comparing measures of sample skewness
+/// and kurtosis", *The Statistician* 47(1), pp. 183–189.
+///
+/// # Complexity
+/// Time: O(n), Space: O(1)
+///
+/// # Returns
+/// - `None` if `data.len() < 3`, data contains NaN/Inf, or variance is zero.
+///
+/// # Examples
+/// ```
+/// use u_numflow::stats::skewness;
+/// // Symmetric data → skewness = 0
+/// let sym = [1.0, 2.0, 3.0, 4.0, 5.0];
+/// assert!(skewness(&sym).unwrap().abs() < 1e-14);
+///
+/// // Right-skewed data → positive skewness
+/// let right = [1.0, 2.0, 3.0, 4.0, 50.0];
+/// assert!(skewness(&right).unwrap() > 0.0);
+/// ```
+pub fn skewness(data: &[f64]) -> Option<f64> {
+    let n = data.len();
+    if n < 3 {
+        return None;
+    }
+    if !data.iter().all(|x| x.is_finite()) {
+        return None;
+    }
+    let nf = n as f64;
+    let m = kahan_sum(data) / nf;
+    let mut sum2 = 0.0;
+    let mut sum3 = 0.0;
+    for &x in data {
+        let d = x - m;
+        let d2 = d * d;
+        sum2 += d2;
+        sum3 += d2 * d;
+    }
+    let m2 = sum2 / nf;
+    if m2 == 0.0 {
+        return None;
+    }
+    let m3 = sum3 / nf;
+    let g1 = m3 / m2.powf(1.5);
+    let correction = (nf * (nf - 1.0)).sqrt() / (nf - 2.0);
+    Some(correction * g1)
+}
+
+/// Computes Fisher's excess kurtosis (G₂) with bias correction.
+///
+/// # Formula
+/// ```text
+/// G₂ = [n(n+1) / ((n−1)(n−2)(n−3))] × Σ[(xᵢ−x̄)/s]⁴ − [3(n−1)² / ((n−2)(n−3))]
+/// ```
+/// where `s` is the sample standard deviation (n−1 denominator).
+///
+/// This matches Excel `KURT()` and `scipy.stats.kurtosis(bias=False)`.
+/// Returns **0** for a normal distribution, positive for heavy tails
+/// (leptokurtic), negative for light tails (platykurtic).
+///
+/// # Algorithm
+/// Two-pass: first computes the mean (Kahan sum), then accumulates
+/// central moments in a single sweep.
+///
+/// Reference: Joanes & Gill (1998), "Comparing measures of sample skewness
+/// and kurtosis", *The Statistician* 47(1), pp. 183–189.
+///
+/// # Complexity
+/// Time: O(n), Space: O(1)
+///
+/// # Returns
+/// - `None` if `data.len() < 4`, data contains NaN/Inf, or variance is zero.
+///
+/// # Examples
+/// ```
+/// use u_numflow::stats::kurtosis;
+/// // Uniform-ish data → negative excess kurtosis
+/// let data = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0];
+/// let k = kurtosis(&data).unwrap();
+/// assert!(k < 0.0); // platykurtic
+/// ```
+pub fn kurtosis(data: &[f64]) -> Option<f64> {
+    let n = data.len();
+    if n < 4 {
+        return None;
+    }
+    if !data.iter().all(|x| x.is_finite()) {
+        return None;
+    }
+    let nf = n as f64;
+    let m = kahan_sum(data) / nf;
+    let mut sum2 = 0.0;
+    let mut sum4 = 0.0;
+    for &x in data {
+        let d = x - m;
+        let d2 = d * d;
+        sum2 += d2;
+        sum4 += d2 * d2;
+    }
+    // Sample variance s² = sum2 / (n-1)
+    let s2 = sum2 / (nf - 1.0);
+    if s2 == 0.0 {
+        return None;
+    }
+    let s4 = s2 * s2;
+    // Σ[(xᵢ − x̄)/s]⁴
+    let sum_z4 = sum4 / s4;
+    let a = nf * (nf + 1.0) / ((nf - 1.0) * (nf - 2.0) * (nf - 3.0));
+    let b = 3.0 * (nf - 1.0) * (nf - 1.0) / ((nf - 2.0) * (nf - 3.0));
+    Some(a * sum_z4 - b)
+}
+
+/// Computes the sample covariance between two datasets.
+///
+/// # Formula
+/// ```text
+/// Cov(X, Y) = Σ(xᵢ − x̄)(yᵢ − ȳ) / (n − 1)
+/// ```
+///
+/// Uses Bessel's correction (n−1 denominator) for an unbiased estimator.
+///
+/// # Complexity
+/// Time: O(n), Space: O(1)
+///
+/// # Returns
+/// - `None` if `x.len() != y.len()`, `n < 2`, or data contains NaN/Inf.
+///
+/// # Examples
+/// ```
+/// use u_numflow::stats::covariance;
+/// let x = [1.0, 2.0, 3.0, 4.0, 5.0];
+/// let y = [2.0, 4.0, 6.0, 8.0, 10.0];
+/// let cov = covariance(&x, &y).unwrap();
+/// assert!((cov - 5.0).abs() < 1e-14); // perfect positive covariance
+/// ```
+pub fn covariance(x: &[f64], y: &[f64]) -> Option<f64> {
+    let n = x.len();
+    if n != y.len() || n < 2 {
+        return None;
+    }
+    if !x.iter().chain(y.iter()).all(|v| v.is_finite()) {
+        return None;
+    }
+    let nf = n as f64;
+    let mean_x = kahan_sum(x) / nf;
+    let mean_y = kahan_sum(y) / nf;
+    let mut sum = 0.0;
+    for i in 0..n {
+        sum += (x[i] - mean_x) * (y[i] - mean_y);
+    }
+    Some(sum / (nf - 1.0))
+}
+
 // ---------------------------------------------------------------------------
 // Kahan compensated summation
 // ---------------------------------------------------------------------------
@@ -321,21 +488,23 @@ pub fn kahan_sum(data: &[f64]) -> f64 {
 // Welford online accumulator
 // ---------------------------------------------------------------------------
 
-/// Streaming accumulator for mean and variance using Welford's algorithm.
+/// Streaming accumulator for mean, variance, skewness, and kurtosis.
 ///
-/// Computes running mean, variance, and standard deviation in a single
-/// pass with O(1) memory and guaranteed numerical stability.
+/// Computes running descriptive statistics in a single pass with O(1)
+/// memory and guaranteed numerical stability, using the extended
+/// Welford algorithm for higher-order moments.
 ///
 /// # Algorithm
-/// For each new sample `x_k`:
-/// ```text
-/// δ₁ = x_k − μ_{k−1}
-/// μ_k = μ_{k−1} + δ₁ / k
-/// δ₂ = x_k − μ_k
-/// M₂_k = M₂_{k−1} + δ₁ × δ₂
-/// ```
+/// Maintains central moment sums M₂, M₃, M₄ incrementally. The update
+/// order (M₄ → M₃ → M₂) preserves correctness since each uses the
+/// *previous* values of lower moments.
 ///
-/// Reference: Welford (1962), *Technometrics* 4(3), pp. 419–420.
+/// References:
+/// - Welford (1962), *Technometrics* 4(3), pp. 419–420.
+/// - Pébay (2008), "Formulas for Robust, One-Pass Parallel Computation
+///   of Covariances and Arbitrary-Order Statistical Moments",
+///   Sandia Report SAND2008-6212.
+/// - Terriberry (2007), "Computing Higher-Order Moments Online".
 ///
 /// # Examples
 /// ```
@@ -352,6 +521,8 @@ pub struct WelfordAccumulator {
     count: u64,
     mean_acc: f64,
     m2: f64,
+    m3: f64,
+    m4: f64,
 }
 
 impl WelfordAccumulator {
@@ -361,16 +532,42 @@ impl WelfordAccumulator {
             count: 0,
             mean_acc: 0.0,
             m2: 0.0,
+            m3: 0.0,
+            m4: 0.0,
         }
     }
 
     /// Feeds a new sample into the accumulator.
+    ///
+    /// Updates M₂, M₃, M₄ in the correct order (M₄ → M₃ → M₂) so that
+    /// each uses the *previous* values of lower-order moments.
+    ///
+    /// The first sample is handled as a special case: all moments remain
+    /// zero and only the mean is initialized. This avoids intermediate
+    /// overflow when `delta² > f64::MAX` (e.g., `value ≈ 1e166`).
     pub fn update(&mut self, value: f64) {
+        let n1 = self.count;
         self.count += 1;
+
+        if n1 == 0 {
+            // First sample: mean = value, all moments stay zero.
+            self.mean_acc = value;
+            return;
+        }
+
+        let n = self.count as f64;
         let delta = value - self.mean_acc;
-        self.mean_acc += delta / self.count as f64;
-        let delta2 = value - self.mean_acc;
-        self.m2 += delta * delta2;
+        let delta_n = delta / n;
+        let delta_n2 = delta_n * delta_n;
+        let term1 = delta * delta_n * n1 as f64;
+
+        // M₄ before M₃ before M₂ — order matters!
+        self.m4 += term1 * delta_n2 * (n * n - 3.0 * n + 3.0)
+            + 6.0 * delta_n2 * self.m2
+            - 4.0 * delta_n * self.m3;
+        self.m3 += term1 * delta_n * (n - 2.0) - 3.0 * delta_n * self.m2;
+        self.m2 += term1;
+        self.mean_acc += delta_n;
     }
 
     /// Returns the number of samples seen so far.
@@ -419,12 +616,53 @@ impl WelfordAccumulator {
         self.population_variance().map(f64::sqrt)
     }
 
+    /// Returns Fisher's adjusted sample skewness (G₁), or `None` if
+    /// fewer than 3 samples have been added or variance is zero.
+    ///
+    /// Uses the same bias correction as Excel `SKEW()`.
+    pub fn skewness(&self) -> Option<f64> {
+        if self.count < 3 {
+            return None;
+        }
+        let n = self.count as f64;
+        if self.m2 == 0.0 {
+            return None;
+        }
+        // Biased skewness: g₁ = √n × M₃ / M₂^(3/2)
+        let g1 = n.sqrt() * self.m3 / self.m2.powf(1.5);
+        // Bias correction: √(n(n−1)) / (n−2)
+        let correction = (n * (n - 1.0)).sqrt() / (n - 2.0);
+        Some(correction * g1)
+    }
+
+    /// Returns Fisher's excess kurtosis (G₂) with bias correction, or
+    /// `None` if fewer than 4 samples have been added or variance is zero.
+    ///
+    /// Uses the same bias correction as Excel `KURT()`.
+    /// Returns 0 for a normal distribution, positive for heavy tails.
+    pub fn kurtosis(&self) -> Option<f64> {
+        if self.count < 4 {
+            return None;
+        }
+        let n = self.count as f64;
+        if self.m2 == 0.0 {
+            return None;
+        }
+        // Biased excess kurtosis: g₂ = n × M₄ / M₂² − 3
+        let g2 = n * self.m4 / (self.m2 * self.m2) - 3.0;
+        // Unbiased (Fisher G₂): [(n−1)/((n−2)(n−3))] × [(n+1)×g₂ + 6]
+        let correction = (n - 1.0) / ((n - 2.0) * (n - 3.0));
+        Some(correction * ((n + 1.0) * g2 + 6.0))
+    }
+
     /// Merges another accumulator into this one (parallel-friendly).
     ///
-    /// Uses Chan's parallel algorithm for combining partial aggregates.
+    /// Uses Chan's parallel algorithm extended to higher-order moments.
     ///
-    /// Reference: Chan, Golub & LeVeque (1979), "Updating Formulae and a
-    /// Pairwise Algorithm for Computing Sample Variances".
+    /// References:
+    /// - Chan, Golub & LeVeque (1979), "Updating Formulae and a
+    ///   Pairwise Algorithm for Computing Sample Variances".
+    /// - Pébay (2008), SAND2008-6212 (M₃, M₄ merge formulas).
     pub fn merge(&mut self, other: &WelfordAccumulator) {
         if other.count == 0 {
             return;
@@ -433,15 +671,35 @@ impl WelfordAccumulator {
             *self = other.clone();
             return;
         }
+        let na = self.count as f64;
+        let nb = other.count as f64;
         let total = self.count + other.count;
+        let n = total as f64;
         let delta = other.mean_acc - self.mean_acc;
-        let new_mean = self.mean_acc + delta * (other.count as f64 / total as f64);
-        let new_m2 = self.m2
-            + other.m2
-            + delta * delta * (self.count as f64 * other.count as f64 / total as f64);
+        let delta2 = delta * delta;
+        let delta3 = delta2 * delta;
+        let delta4 = delta2 * delta2;
+
+        let new_mean = self.mean_acc + delta * (nb / n);
+
+        let new_m2 = self.m2 + other.m2 + delta2 * na * nb / n;
+
+        let new_m3 = self.m3
+            + other.m3
+            + delta3 * na * nb * (na - nb) / (n * n)
+            + 3.0 * delta * (na * other.m2 - nb * self.m2) / n;
+
+        let new_m4 = self.m4
+            + other.m4
+            + delta4 * na * nb * (na * na - na * nb + nb * nb) / (n * n * n)
+            + 6.0 * delta2 * (na * na * other.m2 + nb * nb * self.m2) / (n * n)
+            + 4.0 * delta * (na * other.m3 - nb * self.m3) / n;
+
         self.count = total;
         self.mean_acc = new_mean;
         self.m2 = new_m2;
+        self.m3 = new_m3;
+        self.m4 = new_m4;
     }
 }
 
@@ -687,6 +945,217 @@ mod tests {
         assert!((acc_a.sample_variance().unwrap() - expected_var).abs() < 1e-10);
     }
 
+    // --- skewness ---
+
+    #[test]
+    fn test_skewness_symmetric() {
+        // Symmetric data → skewness = 0
+        let data = [1.0, 2.0, 3.0, 4.0, 5.0];
+        assert!(skewness(&data).unwrap().abs() < 1e-14);
+    }
+
+    #[test]
+    fn test_skewness_right_skewed() {
+        // Right-skewed: one large outlier
+        let data = [1.0, 2.0, 3.0, 4.0, 50.0];
+        let s = skewness(&data).unwrap();
+        assert!(s > 0.0, "expected positive skewness, got {s}");
+    }
+
+    #[test]
+    fn test_skewness_left_skewed() {
+        // Left-skewed: one small outlier
+        let data = [-50.0, 1.0, 2.0, 3.0, 4.0];
+        let s = skewness(&data).unwrap();
+        assert!(s < 0.0, "expected negative skewness, got {s}");
+    }
+
+    #[test]
+    fn test_skewness_edge_cases() {
+        assert_eq!(skewness(&[]), None);
+        assert_eq!(skewness(&[1.0]), None);
+        assert_eq!(skewness(&[1.0, 2.0]), None);
+        // Constant data → zero variance → None
+        assert_eq!(skewness(&[5.0, 5.0, 5.0]), None);
+        // NaN → None
+        assert_eq!(skewness(&[1.0, f64::NAN, 3.0]), None);
+    }
+
+    #[test]
+    fn test_skewness_known_value() {
+        // Data: [1, 2, 3, 4, 8]
+        // Manual computation:
+        //   n=5, mean=3.6
+        //   d = [-2.6, -1.6, -0.6, 0.4, 4.4]
+        //   m2 = (6.76+2.56+0.36+0.16+19.36)/5 = 5.84
+        //   m3 = (-17.576-4.096-0.216+0.064+85.184)/5 = 12.672
+        //   g1 = 12.672 / 5.84^1.5 ≈ 0.8982
+        //   correction = sqrt(20)/3 ≈ 1.4907
+        //   G1 ≈ 1.3388
+        let data = [1.0, 2.0, 3.0, 4.0, 8.0];
+        let s = skewness(&data).unwrap();
+        assert!(
+            (s - 1.339).abs() < 0.01,
+            "expected skewness ≈ 1.34, got {s}"
+        );
+    }
+
+    // --- kurtosis ---
+
+    #[test]
+    fn test_kurtosis_uniform_negative() {
+        // Uniform-ish data should have negative excess kurtosis (platykurtic)
+        let data = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0];
+        let k = kurtosis(&data).unwrap();
+        assert!(k < 0.0, "uniform data should be platykurtic, got {k}");
+    }
+
+    #[test]
+    fn test_kurtosis_edge_cases() {
+        assert_eq!(kurtosis(&[]), None);
+        assert_eq!(kurtosis(&[1.0]), None);
+        assert_eq!(kurtosis(&[1.0, 2.0]), None);
+        assert_eq!(kurtosis(&[1.0, 2.0, 3.0]), None);
+        // Constant → None
+        assert_eq!(kurtosis(&[5.0, 5.0, 5.0, 5.0]), None);
+        // NaN → None
+        assert_eq!(kurtosis(&[1.0, f64::NAN, 3.0, 4.0]), None);
+    }
+
+    #[test]
+    fn test_kurtosis_heavy_tails() {
+        // Heavy-tailed data (leptokurtic) → positive excess kurtosis
+        let data = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 100.0];
+        let k = kurtosis(&data).unwrap();
+        assert!(k > 0.0, "heavy-tailed data should be leptokurtic, got {k}");
+    }
+
+    // --- covariance ---
+
+    #[test]
+    fn test_covariance_perfect_positive() {
+        let x = [1.0, 2.0, 3.0, 4.0, 5.0];
+        let y = [2.0, 4.0, 6.0, 8.0, 10.0];
+        let cov = covariance(&x, &y).unwrap();
+        assert!((cov - 5.0).abs() < 1e-14);
+    }
+
+    #[test]
+    fn test_covariance_perfect_negative() {
+        let x = [1.0, 2.0, 3.0, 4.0, 5.0];
+        let y = [10.0, 8.0, 6.0, 4.0, 2.0];
+        let cov = covariance(&x, &y).unwrap();
+        assert!((cov - (-5.0)).abs() < 1e-14);
+    }
+
+    #[test]
+    fn test_covariance_zero() {
+        // Independent: x and -x values cancel
+        let x = [1.0, 2.0, 3.0, 4.0];
+        let y = [5.0, 5.0, 5.0, 5.0]; // constant
+        let cov = covariance(&x, &y).unwrap();
+        assert!(cov.abs() < 1e-14);
+    }
+
+    #[test]
+    fn test_covariance_self_is_variance() {
+        let data = [2.0, 4.0, 4.0, 4.0, 5.0, 5.0, 7.0, 9.0];
+        let cov_xx = covariance(&data, &data).unwrap();
+        let var = variance(&data).unwrap();
+        assert!((cov_xx - var).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_covariance_edge_cases() {
+        assert_eq!(covariance(&[], &[]), None);
+        assert_eq!(covariance(&[1.0], &[2.0]), None);
+        assert_eq!(covariance(&[1.0, 2.0], &[1.0]), None); // different lengths
+        assert_eq!(covariance(&[1.0, f64::NAN], &[1.0, 2.0]), None);
+    }
+
+    // --- WelfordAccumulator: skewness & kurtosis ---
+
+    #[test]
+    fn test_welford_skewness_matches_batch() {
+        let data = [1.0, 2.0, 3.0, 4.0, 50.0];
+        let mut acc = WelfordAccumulator::new();
+        for &x in &data {
+            acc.update(x);
+        }
+        let batch = skewness(&data).unwrap();
+        let stream = acc.skewness().unwrap();
+        assert!(
+            (batch - stream).abs() < 1e-10,
+            "batch={batch}, stream={stream}"
+        );
+    }
+
+    #[test]
+    fn test_welford_kurtosis_matches_batch() {
+        let data = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 100.0];
+        let mut acc = WelfordAccumulator::new();
+        for &x in &data {
+            acc.update(x);
+        }
+        let batch = kurtosis(&data).unwrap();
+        let stream = acc.kurtosis().unwrap();
+        assert!(
+            (batch - stream).abs() < 1e-8,
+            "batch={batch}, stream={stream}"
+        );
+    }
+
+    #[test]
+    fn test_welford_skewness_kurtosis_edge_cases() {
+        let mut acc = WelfordAccumulator::new();
+        assert_eq!(acc.skewness(), None);
+        assert_eq!(acc.kurtosis(), None);
+        acc.update(1.0);
+        assert_eq!(acc.skewness(), None);
+        assert_eq!(acc.kurtosis(), None);
+        acc.update(2.0);
+        assert_eq!(acc.skewness(), None);
+        assert_eq!(acc.kurtosis(), None);
+        acc.update(3.0);
+        // skewness available at n=3
+        assert!(acc.skewness().is_some());
+        assert_eq!(acc.kurtosis(), None);
+        acc.update(4.0);
+        // kurtosis available at n=4
+        assert!(acc.kurtosis().is_some());
+    }
+
+    #[test]
+    fn test_welford_merge_skewness_kurtosis() {
+        let data_a = [1.0, 3.0, 5.0, 7.0, 9.0, 11.0];
+        let data_b = [2.0, 50.0, 4.0, 6.0, 8.0, 100.0];
+        let all: Vec<f64> = data_a.iter().chain(data_b.iter()).copied().collect();
+
+        let mut acc_a = WelfordAccumulator::new();
+        for &x in &data_a {
+            acc_a.update(x);
+        }
+        let mut acc_b = WelfordAccumulator::new();
+        for &x in &data_b {
+            acc_b.update(x);
+        }
+        acc_a.merge(&acc_b);
+
+        let expected_skew = skewness(&all).unwrap();
+        let expected_kurt = kurtosis(&all).unwrap();
+        let merged_skew = acc_a.skewness().unwrap();
+        let merged_kurt = acc_a.kurtosis().unwrap();
+
+        assert!(
+            (expected_skew - merged_skew).abs() < 1e-8,
+            "skewness: expected={expected_skew}, merged={merged_skew}"
+        );
+        assert!(
+            (expected_kurt - merged_kurt).abs() < 1e-6,
+            "kurtosis: expected={expected_kurt}, merged={merged_kurt}"
+        );
+    }
+
     // --- numerical stability ---
 
     #[test]
@@ -833,6 +1302,89 @@ mod proptests {
                 prop_assert!(
                     (seq_var - mrg_var).abs() < 1e-8 * seq_var.max(1.0),
                     "merged variance should match sequential"
+                );
+            }
+        }
+
+        // --- Skewness of symmetric data is near zero ---
+        #[test]
+        fn skewness_of_symmetric_is_zero(
+            half in proptest::collection::vec(-1e6_f64..1e6, 2..=50),
+        ) {
+            prop_assume!(half.iter().all(|x| x.is_finite()));
+            // Build truly symmetric data around 0: [a, b, c, -c, -b, -a]
+            let mut data: Vec<f64> = half.clone();
+            data.extend(half.iter().map(|x| -x));
+            if let Some(s) = skewness(&data) {
+                prop_assert!(
+                    s.abs() < 1e-8,
+                    "symmetric data should have ~0 skewness, got {}",
+                    s
+                );
+            }
+        }
+
+        // --- Streaming skewness matches batch ---
+        #[test]
+        fn welford_skewness_matches_batch(data in finite_vec(3, 100)) {
+            let mut acc = WelfordAccumulator::new();
+            for &x in &data { acc.update(x); }
+            match (skewness(&data), acc.skewness()) {
+                (Some(batch), Some(stream)) if batch.is_finite() && stream.is_finite() => {
+                    let tol = 1e-8 * batch.abs().max(1.0);
+                    prop_assert!(
+                        (batch - stream).abs() < tol,
+                        "batch={} stream={}", batch, stream
+                    );
+                }
+                _ => {} // NaN/None cases: skip (extreme data)
+            }
+        }
+
+        // --- Streaming kurtosis matches batch ---
+        #[test]
+        fn welford_kurtosis_matches_batch(data in finite_vec(4, 100)) {
+            let mut acc = WelfordAccumulator::new();
+            for &x in &data { acc.update(x); }
+            match (kurtosis(&data), acc.kurtosis()) {
+                (Some(batch), Some(stream)) if batch.is_finite() && stream.is_finite() => {
+                    let tol = 1e-6 * batch.abs().max(1.0);
+                    prop_assert!(
+                        (batch - stream).abs() < tol,
+                        "batch={} stream={}", batch, stream
+                    );
+                }
+                _ => {} // NaN/None cases: skip (extreme data)
+            }
+        }
+
+        // --- Covariance of x with itself equals variance ---
+        #[test]
+        fn covariance_self_is_variance(data in finite_vec(2, 100)) {
+            let cov = covariance(&data, &data).unwrap();
+            let var = variance(&data).unwrap();
+            let tol = 1e-10 * var.max(1.0);
+            prop_assert!(
+                (cov - var).abs() < tol,
+                "Cov(x,x)={} != Var(x)={}", cov, var
+            );
+        }
+
+        // --- Covariance is symmetric: Cov(x,y) = Cov(y,x) ---
+        #[test]
+        fn covariance_symmetric(
+            x in finite_vec(2, 50),
+            y in finite_vec(2, 50),
+        ) {
+            let n = x.len().min(y.len());
+            if n >= 2 {
+                let x_slice = &x[..n];
+                let y_slice = &y[..n];
+                let cov_xy = covariance(x_slice, y_slice).unwrap();
+                let cov_yx = covariance(y_slice, x_slice).unwrap();
+                prop_assert!(
+                    (cov_xy - cov_yx).abs() < 1e-10 * cov_xy.abs().max(1.0),
+                    "Cov(x,y)={} != Cov(y,x)={}", cov_xy, cov_yx
                 );
             }
         }
