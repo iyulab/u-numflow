@@ -11,6 +11,7 @@
 //! - [`stats`] — Descriptive statistics with numerical stability guarantees
 //! - [`distributions`] — Probability distributions (Uniform, Triangular, PERT, Normal, LogNormal, Weibull)
 //! - [`special`] — Special mathematical functions (normal CDF, inverse normal CDF)
+//! - [`matrix`] — Dense matrix operations (multiply, determinant, inverse, Cholesky)
 //! - [`random`] — Random number generation, shuffling, and weighted sampling
 //! - [`collections`] — Specialized data structures (Union-Find)
 //!
@@ -23,6 +24,7 @@
 
 pub mod collections;
 pub mod distributions;
+pub mod matrix;
 pub mod random;
 pub mod special;
 pub mod stats;
