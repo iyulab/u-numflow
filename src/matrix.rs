@@ -647,6 +647,194 @@ impl Matrix {
         let lt = l.transpose();
         solve_upper_triangular(&lt, &y)
     }
+
+    /// Eigenvalue decomposition of a real symmetric matrix using the
+    /// classical Jacobi rotation algorithm.
+    ///
+    /// Returns `(eigenvalues, eigenvectors)` where eigenvalues are sorted
+    /// in **descending** order and eigenvectors are the corresponding columns
+    /// of the returned matrix (column `i` is the eigenvector for eigenvalue `i`).
+    ///
+    /// # Algorithm
+    ///
+    /// Cyclic Jacobi rotations zero off-diagonal elements iteratively.
+    /// Converges quadratically for symmetric matrices.
+    ///
+    /// Reference: Golub & Van Loan (1996), "Matrix Computations", §8.4
+    ///
+    /// # Complexity
+    ///
+    /// O(n³) per sweep, typically 5–10 sweeps. Best for n < 200.
+    ///
+    /// # Errors
+    ///
+    /// Returns `NotSquare` if the matrix is not square, or `NotSymmetric`
+    /// if the matrix is not symmetric within tolerance.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use u_numflow::matrix::Matrix;
+    ///
+    /// let a = Matrix::from_rows(&[
+    ///     &[4.0, 1.0],
+    ///     &[1.0, 3.0],
+    /// ]);
+    /// let (eigenvalues, eigenvectors) = a.eigen_symmetric().unwrap();
+    ///
+    /// // Eigenvalues of [[4,1],[1,3]] are (7+√5)/2 ≈ 4.618 and (7-√5)/2 ≈ 2.382
+    /// assert!((eigenvalues[0] - 4.618).abs() < 0.01);
+    /// assert!((eigenvalues[1] - 2.382).abs() < 0.01);
+    ///
+    /// // Eigenvectors are orthonormal
+    /// let dot: f64 = (0..2).map(|i| eigenvectors.get(i, 0) * eigenvectors.get(i, 1)).sum();
+    /// assert!(dot.abs() < 1e-10);
+    /// ```
+    pub fn eigen_symmetric(&self) -> Result<(Vec<f64>, Matrix), MatrixError> {
+        let n = self.rows;
+        if !self.is_square() {
+            return Err(MatrixError::NotSquare {
+                rows: self.rows,
+                cols: self.cols,
+            });
+        }
+        // Symmetry tolerance: relative to matrix scale
+        let sym_tol = 1e-10 * self.frobenius_norm();
+        if !self.is_symmetric(sym_tol) {
+            return Err(MatrixError::NotSymmetric);
+        }
+
+        // Work on a mutable copy of the matrix
+        let mut a = self.data.clone();
+        // Eigenvector accumulator — starts as identity
+        let mut v = vec![0.0; n * n];
+        for i in 0..n {
+            v[i * n + i] = 1.0;
+        }
+
+        let max_sweeps = 100;
+        let tol = 1e-15;
+
+        for _ in 0..max_sweeps {
+            // Compute off-diagonal Frobenius norm
+            let mut off_norm = 0.0;
+            for i in 0..n {
+                for j in (i + 1)..n {
+                    off_norm += 2.0 * a[i * n + j] * a[i * n + j];
+                }
+            }
+            off_norm = off_norm.sqrt();
+
+            if off_norm < tol {
+                break;
+            }
+
+            // One full sweep: rotate each (p, q) pair
+            for p in 0..n {
+                for q in (p + 1)..n {
+                    let apq = a[p * n + q];
+                    if apq.abs() < tol * 0.01 {
+                        continue;
+                    }
+
+                    let app = a[p * n + p];
+                    let aqq = a[q * n + q];
+                    let diff = aqq - app;
+
+                    // Compute rotation angle
+                    let (cos, sin) = if diff.abs() < 1e-300 {
+                        // Special case: diagonal elements equal
+                        let s = std::f64::consts::FRAC_1_SQRT_2;
+                        (s, if apq > 0.0 { s } else { -s })
+                    } else {
+                        let tau = diff / (2.0 * apq);
+                        // t = sign(tau) / (|tau| + sqrt(1 + tau²))
+                        let t = if tau >= 0.0 {
+                            1.0 / (tau + (1.0 + tau * tau).sqrt())
+                        } else {
+                            -1.0 / (-tau + (1.0 + tau * tau).sqrt())
+                        };
+                        let c = 1.0 / (1.0 + t * t).sqrt();
+                        let s = t * c;
+                        (c, s)
+                    };
+
+                    // Apply rotation to matrix A (symmetric, only update needed parts)
+                    a[p * n + p] -= 2.0 * sin * cos * apq
+                        + sin * sin * (a[q * n + q] - a[p * n + p]);
+                    a[q * n + q] += 2.0 * sin * cos * apq
+                        + sin * sin * (aqq - app); // use original aqq, app
+                    a[p * n + q] = 0.0;
+                    a[q * n + p] = 0.0;
+
+                    // Actually, let's use the standard Jacobi rotation formula properly.
+                    // Reset and recompute.
+                    // Undo the above:
+                    a[p * n + p] = app;
+                    a[q * n + q] = aqq;
+                    a[p * n + q] = apq;
+                    a[q * n + p] = apq;
+
+                    // Standard update: for all rows/cols
+                    // First update rows p and q for all columns
+                    for r in 0..n {
+                        if r == p || r == q {
+                            continue;
+                        }
+                        let arp = a[r * n + p];
+                        let arq = a[r * n + q];
+                        a[r * n + p] = cos * arp - sin * arq;
+                        a[r * n + q] = sin * arp + cos * arq;
+                        a[p * n + r] = a[r * n + p]; // symmetric
+                        a[q * n + r] = a[r * n + q]; // symmetric
+                    }
+
+                    // Update diagonal and off-diagonal (p,q)
+                    let new_pp = cos * cos * app - 2.0 * sin * cos * apq + sin * sin * aqq;
+                    let new_qq = sin * sin * app + 2.0 * sin * cos * apq + cos * cos * aqq;
+                    a[p * n + p] = new_pp;
+                    a[q * n + q] = new_qq;
+                    a[p * n + q] = 0.0;
+                    a[q * n + p] = 0.0;
+
+                    // Accumulate eigenvectors: V = V * J
+                    for r in 0..n {
+                        let vp = v[r * n + p];
+                        let vq = v[r * n + q];
+                        v[r * n + p] = cos * vp - sin * vq;
+                        v[r * n + q] = sin * vp + cos * vq;
+                    }
+                }
+            }
+        }
+
+        // Extract eigenvalues from diagonal
+        let mut eigen_pairs: Vec<(f64, Vec<f64>)> = (0..n)
+            .map(|i| {
+                let eigenvalue = a[i * n + i];
+                let eigenvector: Vec<f64> = (0..n).map(|r| v[r * n + i]).collect();
+                (eigenvalue, eigenvector)
+            })
+            .collect();
+
+        // Sort by eigenvalue descending
+        eigen_pairs.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+
+        let eigenvalues: Vec<f64> = eigen_pairs.iter().map(|(val, _)| *val).collect();
+        let mut eigvec_data = vec![0.0; n * n];
+        for (col, (_, vec)) in eigen_pairs.iter().enumerate() {
+            for (row, &val) in vec.iter().enumerate() {
+                eigvec_data[row * n + col] = val;
+            }
+        }
+        let eigenvectors = Matrix {
+            data: eigvec_data,
+            rows: n,
+            cols: n,
+        };
+
+        Ok((eigenvalues, eigenvectors))
+    }
 }
 
 /// Solves L·x = b where L is lower-triangular (forward substitution).
