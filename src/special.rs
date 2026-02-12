@@ -266,8 +266,7 @@ fn beta_cf(x: f64, a: f64, b: f64) -> f64 {
         c = (1.0 + num_even / c).max(TINY);
         h *= d * c;
 
-        let num_odd =
-            -(a + m_f) * (a + b + m_f) * x / ((a + 2.0 * m_f) * (a + 2.0 * m_f + 1.0));
+        let num_odd = -(a + m_f) * (a + b + m_f) * x / ((a + 2.0 * m_f) * (a + 2.0 * m_f + 1.0));
         d = 1.0 / (1.0 + num_odd * d).max(TINY);
         c = (1.0 + num_odd / c).max(TINY);
         let delta = d * c;
@@ -553,7 +552,14 @@ pub fn f_distribution_cdf(x: f64, df1: f64, df2: f64) -> f64 {
 /// # Returns
 /// - `f64::NAN` if `p` is outside `(0, 1)` or df1/df2 ≤ 0.
 pub fn f_distribution_quantile(p: f64, df1: f64, df2: f64) -> f64 {
-    if p.is_nan() || df1.is_nan() || df2.is_nan() || df1 <= 0.0 || df2 <= 0.0 || p <= 0.0 || p >= 1.0 {
+    if p.is_nan()
+        || df1.is_nan()
+        || df2.is_nan()
+        || df1 <= 0.0
+        || df2 <= 0.0
+        || p <= 0.0
+        || p >= 1.0
+    {
         return f64::NAN;
     }
 
@@ -791,7 +797,10 @@ mod tests {
         // I_x(1,1) = x (Uniform case)
         for &x in &[0.1, 0.3, 0.5, 0.7, 0.9] {
             let result = regularized_incomplete_beta(x, 1.0, 1.0);
-            assert!((result - x).abs() < 1e-10, "I_{x}(1,1) = {result}, expected {x}");
+            assert!(
+                (result - x).abs() < 1e-10,
+                "I_{x}(1,1) = {result}, expected {x}"
+            );
         }
     }
 
@@ -982,7 +991,12 @@ mod tests {
         for w in xs.windows(2) {
             let c0 = f_distribution_cdf(w[0], 5.0, 10.0);
             let c1 = f_distribution_cdf(w[1], 5.0, 10.0);
-            assert!(c1 >= c0 - 1e-10, "F CDF not monotonic at {}, {}", w[0], w[1]);
+            assert!(
+                c1 >= c0 - 1e-10,
+                "F CDF not monotonic at {}, {}",
+                w[0],
+                w[1]
+            );
         }
     }
 

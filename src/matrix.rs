@@ -264,7 +264,12 @@ impl Matrix {
                 got: (other.rows, other.cols),
             });
         }
-        let data: Vec<f64> = self.data.iter().zip(&other.data).map(|(a, b)| a + b).collect();
+        let data: Vec<f64> = self
+            .data
+            .iter()
+            .zip(&other.data)
+            .map(|(a, b)| a + b)
+            .collect();
         Ok(Self {
             data,
             rows: self.rows,
@@ -283,7 +288,12 @@ impl Matrix {
                 got: (other.rows, other.cols),
             });
         }
-        let data: Vec<f64> = self.data.iter().zip(&other.data).map(|(a, b)| a - b).collect();
+        let data: Vec<f64> = self
+            .data
+            .iter()
+            .zip(&other.data)
+            .map(|(a, b)| a - b)
+            .collect();
         Ok(Self {
             data,
             rows: self.rows,
@@ -760,10 +770,9 @@ impl Matrix {
                     };
 
                     // Apply rotation to matrix A (symmetric, only update needed parts)
-                    a[p * n + p] -= 2.0 * sin * cos * apq
-                        + sin * sin * (a[q * n + q] - a[p * n + p]);
-                    a[q * n + q] += 2.0 * sin * cos * apq
-                        + sin * sin * (aqq - app); // use original aqq, app
+                    a[p * n + p] -=
+                        2.0 * sin * cos * apq + sin * sin * (a[q * n + q] - a[p * n + p]);
+                    a[q * n + q] += 2.0 * sin * cos * apq + sin * sin * (aqq - app); // use original aqq, app
                     a[p * n + q] = 0.0;
                     a[q * n + p] = 0.0;
 
@@ -1060,11 +1069,7 @@ mod tests {
 
     #[test]
     fn test_det_3x3() {
-        let m = Matrix::from_rows(&[
-            &[6.0, 1.0, 1.0],
-            &[4.0, -2.0, 5.0],
-            &[2.0, 8.0, 7.0],
-        ]);
+        let m = Matrix::from_rows(&[&[6.0, 1.0, 1.0], &[4.0, -2.0, 5.0], &[2.0, 8.0, 7.0]]);
         // det = 6*(-14-40) - 1*(28-10) + 1*(32+4) = -306
         // Actually: 6(-2*7 - 5*8) - 1(4*7 - 5*2) + 1(4*8 - (-2)*2)
         //         = 6(-14 - 40) - 1(28 - 10) + 1(32 + 4)
@@ -1111,11 +1116,7 @@ mod tests {
 
     #[test]
     fn test_inverse_3x3() {
-        let a = Matrix::from_rows(&[
-            &[1.0, 2.0, 3.0],
-            &[0.0, 1.0, 4.0],
-            &[5.0, 6.0, 0.0],
-        ]);
+        let a = Matrix::from_rows(&[&[1.0, 2.0, 3.0], &[0.0, 1.0, 4.0], &[5.0, 6.0, 0.0]]);
         let inv = a.inverse().unwrap();
         let eye = a.mul_mat(&inv).unwrap();
         for i in 0..3 {
@@ -1167,11 +1168,7 @@ mod tests {
 
     #[test]
     fn test_cholesky_3x3() {
-        let a = Matrix::from_rows(&[
-            &[25.0, 15.0, -5.0],
-            &[15.0, 18.0, 0.0],
-            &[-5.0, 0.0, 11.0],
-        ]);
+        let a = Matrix::from_rows(&[&[25.0, 15.0, -5.0], &[15.0, 18.0, 0.0], &[-5.0, 0.0, 11.0]]);
         let l = a.cholesky().unwrap();
         let llt = l.mul_mat(&l.transpose()).unwrap();
         for i in 0..3 {
@@ -1196,7 +1193,10 @@ mod tests {
     #[test]
     fn test_cholesky_not_positive_definite() {
         let a = Matrix::from_rows(&[&[1.0, 2.0], &[2.0, 1.0]]);
-        assert!(matches!(a.cholesky(), Err(MatrixError::NotPositiveDefinite)));
+        assert!(matches!(
+            a.cholesky(),
+            Err(MatrixError::NotPositiveDefinite)
+        ));
     }
 
     #[test]
@@ -1228,11 +1228,7 @@ mod tests {
 
     #[test]
     fn test_cholesky_solve_3x3() {
-        let a = Matrix::from_rows(&[
-            &[25.0, 15.0, -5.0],
-            &[15.0, 18.0, 0.0],
-            &[-5.0, 0.0, 11.0],
-        ]);
+        let a = Matrix::from_rows(&[&[25.0, 15.0, -5.0], &[15.0, 18.0, 0.0], &[-5.0, 0.0, 11.0]]);
         let b = vec![35.0, 33.0, 6.0];
         let x = a.cholesky_solve(&b).unwrap();
         let ax = a.mul_vec(&x).unwrap();
@@ -1268,9 +1264,8 @@ mod proptests {
     use proptest::prelude::*;
 
     fn square_matrix(n: usize) -> impl Strategy<Value = Matrix> {
-        proptest::collection::vec(-10.0_f64..10.0, n * n).prop_map(move |data| {
-            Matrix::new(n, n, data).expect("valid dimensions")
-        })
+        proptest::collection::vec(-10.0_f64..10.0, n * n)
+            .prop_map(move |data| Matrix::new(n, n, data).expect("valid dimensions"))
     }
 
     fn spd_matrix(n: usize) -> impl Strategy<Value = Matrix> {

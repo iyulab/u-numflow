@@ -1153,7 +1153,8 @@ impl ChiSquared {
             return 0.0;
         }
         let half_k = self.k / 2.0;
-        let ln_pdf = (half_k - 1.0) * x.ln() - x / 2.0 - half_k * 2.0_f64.ln() - special::ln_gamma(half_k);
+        let ln_pdf =
+            (half_k - 1.0) * x.ln() - x / 2.0 - half_k * 2.0_f64.ln() - special::ln_gamma(half_k);
         ln_pdf.exp()
     }
 
