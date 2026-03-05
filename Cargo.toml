@@ -10,8 +10,15 @@ keywords = ["statistics", "probability", "optimization", "mathematics"]
 categories = ["mathematics", "science"]
 readme = "README.md"
 
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+wasm = ["dep:wasm-bindgen"]
+
 [dependencies]
 rand = "0.9"
+wasm-bindgen = { version = "0.2", optional = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom = { version = "0.3", features = ["wasm_js"] }
