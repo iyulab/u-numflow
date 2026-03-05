@@ -169,8 +169,7 @@ pub fn estimate_lambda(y: &[f64], lambda_min: f64, lambda_max: f64) -> Result<f6
         } else {
             y.iter().map(|&v| (v.powf(lambda) - 1.0) / lambda).collect()
         };
-        let var = population_variance(&y_t)
-            .expect("slice has >= 2 elements — variance is defined");
+        let var = population_variance(&y_t).expect("slice has >= 2 elements — variance is defined");
         if var <= 0.0 {
             return f64::NEG_INFINITY;
         }

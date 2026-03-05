@@ -58,8 +58,7 @@ pub fn normal_cdf(x: f64) -> f64 {
 /// has fewer than 2 elements.
 #[wasm_bindgen]
 pub fn box_cox(data: &[f64], lambda: f64) -> Result<Vec<f64>, JsValue> {
-    crate::transforms::box_cox(data, lambda)
-        .map_err(|e| JsValue::from_str(&e.to_string()))
+    crate::transforms::box_cox(data, lambda).map_err(|e| JsValue::from_str(&e.to_string()))
 }
 
 /// Estimate the optimal Box-Cox lambda via profile maximum likelihood.
