@@ -28,3 +28,4 @@ pub mod matrix;
 pub mod random;
 pub mod special;
 pub mod stats;
+pub mod transforms;

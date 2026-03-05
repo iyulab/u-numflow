@@ -18,6 +18,7 @@ u-numflow provides foundational mathematical, statistical, and probabilistic bui
 | `stats` | Descriptive statistics (mean, variance, skewness, kurtosis) with Welford's online algorithm and Neumaier summation |
 | `distributions` | Probability distributions: Uniform, Triangular, PERT, Normal, LogNormal |
 | `special` | Special functions: normal/t/F/chi² CDF, inverse normal CDF, regularized incomplete beta/gamma, erf |
+| `transforms` | Data transformations: Box-Cox (λ via MLE golden-section search), inverse Box-Cox |
 | `matrix` | Dense matrix operations: determinant, inverse, Cholesky decomposition, Jacobi eigenvalue decomposition |
 | `random` | Seeded RNG, Fisher-Yates shuffle, weighted sampling, random subset selection |
 | `collections` | Specialized data structures: Union-Find with path compression and union-by-rank |
@@ -55,6 +56,12 @@ let sample = pert.sample(&mut rng);
 // Seeded shuffling for reproducibility
 let mut items = vec![1, 2, 3, 4, 5];
 u_numflow::random::shuffle(&mut items, &mut rng);
+
+// Box-Cox transformation (non-normal data normalization)
+use u_numflow::transforms::{estimate_lambda, box_cox};
+let data = [1.0, 2.0, 4.0, 8.0, 16.0];
+let lambda = estimate_lambda(&data, -2.0, 2.0).unwrap(); // MLE via golden-section
+let transformed = box_cox(&data, lambda).unwrap();
 ```
 
 ## Build & Test
