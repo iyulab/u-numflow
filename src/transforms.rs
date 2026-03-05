@@ -245,7 +245,7 @@ mod tests {
     #[test]
     fn inverse_roundtrip_multiple_lambdas() {
         let y = vec![1.5, 2.3, 4.7, 8.1, 15.2];
-        for &lambda in &[-0.5_f64, 0.0, 0.5, 1.0, 2.0] {
+        for &lambda in &[-2.0_f64, -1.0, -0.5, 0.0, 0.5, 1.0, 2.0] {
             let y_t = box_cox(&y, lambda).unwrap();
             let y_rec = inverse_box_cox(&y_t, lambda).unwrap();
             for (orig, rec) in y.iter().zip(y_rec.iter()) {
