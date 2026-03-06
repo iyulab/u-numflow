@@ -22,7 +22,12 @@ const FRAC_1_SQRT_2PI: f64 = 0.3989422804014326779399460599343818684758586311649
 /// ```
 /// use u_numflow::special::standard_normal_cdf;
 /// assert!((standard_normal_cdf(0.0) - 0.5).abs() < 1e-7);
-/// assert!((standard_normal_cdf(1.96) - 0.975).abs() < 1e-3);
+/// // Φ(1.96) = 0.975002 (exact reference: Abramowitz & Stegun table)
+/// assert!((standard_normal_cdf(1.96) - 0.975002).abs() < 1e-6);
+/// assert!((standard_normal_cdf(-1.96) - 0.024998).abs() < 1e-6);
+/// assert!((standard_normal_cdf(3.0) - 0.998650).abs() < 1e-6);
+/// assert!(standard_normal_cdf(f64::INFINITY) == 1.0);
+/// assert!(standard_normal_cdf(f64::NEG_INFINITY) == 0.0);
 /// ```
 pub fn standard_normal_cdf(x: f64) -> f64 {
     if x.is_nan() {
@@ -79,8 +84,11 @@ pub fn standard_normal_cdf(x: f64) -> f64 {
 /// # Examples
 /// ```
 /// use u_numflow::special::inverse_normal_cdf;
-/// assert!((inverse_normal_cdf(0.5)).abs() < 1e-4);
-/// assert!((inverse_normal_cdf(0.975) - 1.96).abs() < 0.01);
+/// // Φ⁻¹(0.5) ≈ 0.0 (A&S 26.2.23: max error < 4.5 × 10⁻⁴)
+/// assert!((inverse_normal_cdf(0.5)).abs() < 5e-4);
+/// // Φ⁻¹(0.975) ≈ 1.95996 (exact: 1.959964...)
+/// assert!((inverse_normal_cdf(0.975) - 1.95996).abs() < 5e-4);
+/// assert!((inverse_normal_cdf(0.025) - (-1.95996)).abs() < 5e-4);
 /// ```
 pub fn inverse_normal_cdf(p: f64) -> f64 {
     if p.is_nan() || !(0.0..=1.0).contains(&p) {

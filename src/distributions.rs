@@ -1925,6 +1925,160 @@ mod tests {
             "PDF integral = {integral}, expected ≈ 1.0"
         );
     }
+
+    // -----------------------------------------------------------------------
+    // Precision validation: Normal CDF/quantile reference values
+    // -----------------------------------------------------------------------
+
+    /// Validates `standard_normal_cdf` against tabulated reference values.
+    ///
+    /// Reference: Abramowitz & Stegun (1964), Table 26.1.
+    /// Algorithm 26.2.17 guarantees max absolute error < 7.5 × 10⁻⁸.
+    #[test]
+    fn test_normal_cdf_reference_values() {
+        // Φ(0) = 0.5 (exact by symmetry)
+        assert!(
+            (special::standard_normal_cdf(0.0) - 0.5).abs() < 1e-7,
+            "Φ(0) error"
+        );
+        // Φ(1.96) = 0.975002 (reference: A&S Table 26.1)
+        assert!(
+            (special::standard_normal_cdf(1.96) - 0.975002).abs() < 1e-6,
+            "Φ(1.96) = {}, expected 0.975002",
+            special::standard_normal_cdf(1.96)
+        );
+        // Φ(-1.96) = 0.024998
+        assert!(
+            (special::standard_normal_cdf(-1.96) - 0.024998).abs() < 1e-6,
+            "Φ(-1.96) = {}, expected 0.024998",
+            special::standard_normal_cdf(-1.96)
+        );
+        // Φ(3.0) = 0.998650 (reference)
+        assert!(
+            (special::standard_normal_cdf(3.0) - 0.998650).abs() < 1e-6,
+            "Φ(3.0) = {}, expected 0.998650",
+            special::standard_normal_cdf(3.0)
+        );
+        // Symmetry: Φ(x) + Φ(-x) = 1
+        for &x in &[0.5, 1.0, 1.96, 2.5, 3.0] {
+            let sum = special::standard_normal_cdf(x) + special::standard_normal_cdf(-x);
+            assert!(
+                (sum - 1.0).abs() < 1e-14,
+                "Symmetry violated at x={x}: sum={sum}"
+            );
+        }
+    }
+
+    /// Validates `inverse_normal_cdf` against reference values.
+    ///
+    /// A&S 26.2.23 has max absolute error < 4.5 × 10⁻⁴.
+    #[test]
+    fn test_normal_quantile_reference_values() {
+        // Φ⁻¹(0.5) = 0.0 (A&S 26.2.23: max error < 4.5 × 10⁻⁴, typical much smaller)
+        assert!(
+            special::inverse_normal_cdf(0.5).abs() < 5e-4,
+            "Φ⁻¹(0.5) = {}, expected 0.0",
+            special::inverse_normal_cdf(0.5)
+        );
+        // Φ⁻¹(0.975) ≈ 1.95996 (exact: 1.959964...)
+        let q975 = special::inverse_normal_cdf(0.975);
+        assert!(
+            (q975 - 1.95996).abs() < 5e-4,
+            "Φ⁻¹(0.975) = {q975}, expected ≈ 1.95996"
+        );
+        // Φ⁻¹(0.025) ≈ -1.95996 (antisymmetry)
+        let q025 = special::inverse_normal_cdf(0.025);
+        assert!(
+            (q025 + 1.95996).abs() < 5e-4,
+            "Φ⁻¹(0.025) = {q025}, expected ≈ -1.95996"
+        );
+        // Roundtrip: Φ(Φ⁻¹(p)) = p (within CDF accuracy)
+        for &p in &[0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95, 0.99] {
+            let z = special::inverse_normal_cdf(p);
+            let p_back = special::standard_normal_cdf(z);
+            assert!(
+                (p_back - p).abs() < 1e-3,
+                "Roundtrip failed: p={p}, z={z}, p_back={p_back}"
+            );
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Precision validation: Gamma function reference values
+    // -----------------------------------------------------------------------
+
+    /// Validates `gamma` against exact reference values.
+    ///
+    /// The Lanczos approximation has relative error < 2 × 10⁻¹⁰.
+    #[test]
+    fn test_gamma_reference_values() {
+        // Γ(0.5) = √π ≈ 1.77245385090552
+        let sqrt_pi = std::f64::consts::PI.sqrt();
+        assert!(
+            (special::gamma(0.5) - sqrt_pi).abs() < 1e-7,
+            "Γ(0.5) = {}, expected √π = {}",
+            special::gamma(0.5),
+            sqrt_pi
+        );
+        // Γ(1.0) = 1 (exact)
+        assert!(
+            (special::gamma(1.0) - 1.0).abs() < 1e-14,
+            "Γ(1.0) = {}",
+            special::gamma(1.0)
+        );
+        // Γ(1.5) = (1/2)·Γ(0.5) = √π/2 ≈ 0.88622693
+        let gamma_1_5 = sqrt_pi / 2.0;
+        assert!(
+            (special::gamma(1.5) - gamma_1_5).abs() < 1e-7,
+            "Γ(1.5) = {}, expected {}",
+            special::gamma(1.5),
+            gamma_1_5
+        );
+        // Γ(2.0) = 1! = 1 (exact)
+        assert!(
+            (special::gamma(2.0) - 1.0).abs() < 1e-14,
+            "Γ(2.0) = {}",
+            special::gamma(2.0)
+        );
+        // Γ(3.0) = 2! = 2 (exact)
+        assert!(
+            (special::gamma(3.0) - 2.0).abs() < 1e-13,
+            "Γ(3.0) = {}",
+            special::gamma(3.0)
+        );
+        // Γ(4.0) = 3! = 6 (exact)
+        assert!(
+            (special::gamma(4.0) - 6.0).abs() < 1e-12,
+            "Γ(4.0) = {}",
+            special::gamma(4.0)
+        );
+        // Γ(5.0) = 4! = 24 (exact)
+        assert!(
+            (special::gamma(5.0) - 24.0).abs() < 1e-8,
+            "Γ(5.0) = {}, expected 24.0",
+            special::gamma(5.0)
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Precision validation: Gamma distribution PDF at known point
+    // -----------------------------------------------------------------------
+
+    /// Gamma(α=2, β=1) PDF at x=1: f(1) = x^(α-1)·exp(-βx)/Γ(α) = e⁻¹ ≈ 0.36788.
+    ///
+    /// Reference: f(x; α, β) = β^α·x^(α-1)·exp(-βx)/Γ(α)
+    /// f(1; 2, 1) = 1^2·1^1·exp(-1)/Γ(2) = exp(-1)/1 = e⁻¹ ≈ 0.36788
+    #[test]
+    fn test_gamma_pdf_reference_value() {
+        let g = GammaDistribution::new(2.0, 1.0).unwrap();
+        let expected = (-1.0_f64).exp(); // e⁻¹ ≈ 0.36787944
+        assert!(
+            (g.pdf(1.0) - expected).abs() < 1e-5,
+            "Gamma(2,1).pdf(1) = {}, expected e⁻¹ = {}",
+            g.pdf(1.0),
+            expected
+        );
+    }
 }
 
 #[cfg(test)]
