@@ -80,6 +80,19 @@ cargo test
 
 MIT License — see [LICENSE](LICENSE).
 
+## npm (WebAssembly)
+
+```bash
+npm install @iyulab/u-numflow
+```
+
+The package resolves per environment via a conditional `exports` map:
+
+| Environment | Entry |
+|---|---|
+| Bundlers (webpack, Vite, …) | ESM + WebAssembly ESM-integration (`default` condition) |
+| Node.js — `require()`, ESM `import`, CJS TS runners (`tsx`, `ts-node`) | CJS glue loading the wasm from the filesystem (`node` condition) — no loader hooks or flags |
+
 ## Related
 
 - [u-metaheur](https://github.com/iyulab/u-metaheur) — Metaheuristic optimization (GA, SA, ALNS, CP)
