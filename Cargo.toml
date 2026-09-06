@@ -1,6 +1,7 @@
 [package]
 name = "u-numflow"
 version = "0.3.1"
+rust-version = "1.85"
 edition = "2021"
 authors = ["iyulab"]
 license = "MIT"
@@ -17,11 +18,11 @@ crate-type = ["cdylib", "rlib"]
 wasm = ["dep:wasm-bindgen"]
 
 [dependencies]
-rand = "0.9"
+rand = "0.10"
 wasm-bindgen = { version = "0.2", optional = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-getrandom = { version = "0.3", features = ["wasm_js"] }
+getrandom = { version = "0.4", features = ["wasm_js"] }
 
 [dev-dependencies]
 proptest = "1.4"

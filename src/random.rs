@@ -9,7 +9,7 @@
 //! The underlying algorithm (SmallRng) is deterministic for a given seed
 //! on the same platform.
 
-use rand::Rng;
+use rand::{Rng, RngExt};
 
 /// Creates a fast, seeded random number generator.
 ///
@@ -19,7 +19,7 @@ use rand::Rng;
 /// # Examples
 /// ```
 /// use u_numflow::random::create_rng;
-/// use rand::Rng;
+/// use rand::{Rng, RngExt};
 /// let mut rng = create_rng(42);
 /// let x: f64 = rng.random();
 /// assert!(x >= 0.0 && x < 1.0);
