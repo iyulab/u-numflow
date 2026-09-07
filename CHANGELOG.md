@@ -8,6 +8,30 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-07
+
+### Changed (breaking)
+
+- **`rand` is now 0.10** (previously 0.9). `rand`'s traits and types appear in
+  this crate's public signatures — `shuffle`, `shuffled_indices`,
+  `weighted_choose` and `AliasTable::sample` are generic over `R: Rng`, and
+  `create_rng` returns `rand::rngs::SmallRng` — so the two versions are not
+  interchangeable at the boundary. Callers must move to `rand` 0.10 as well;
+  passing a 0.9 generator no longer satisfies these bounds. The generated
+  sequences for a given seed are unchanged, so seeded results are identical to
+  the previous release.
+- **The minimum supported Rust version is now declared as 1.85** and is verified
+  by building on that exact toolchain; 1.84 and below fail. The crate previously
+  declared no `rust-version` at all, so this makes an existing requirement
+  explicit rather than raising one that was already documented.
+
+### Changed
+
+- **`getrandom` is now 0.4** on WebAssembly targets. It reaches the browser
+  entropy source through its `wasm_js` crate feature alone; the
+  `RUSTFLAGS --cfg getrandom_backend="wasm_js"` that 0.3 required is no longer
+  needed.
+
 ## [0.3.1] - 2026-07-05
 
 ### Fixed
