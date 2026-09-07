@@ -1,6 +1,6 @@
 //! # u-numflow
 //!
-//! Mathematical primitives for the U-Engine ecosystem.
+//! Foundational mathematical primitives.
 //!
 //! This crate provides foundational mathematical, statistical, and probabilistic
 //! building blocks that are domain-agnostic. It knows nothing about scheduling,
