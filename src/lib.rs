@@ -14,6 +14,8 @@
 //! - [`matrix`] — Dense matrix operations (multiply, determinant, inverse, Cholesky)
 //! - [`random`] — Random number generation, shuffling, and weighted sampling
 //! - [`collections`] — Specialized data structures (Union-Find)
+//! - [`transforms`] — Box-Cox power transformation
+//! - [`fourier`] — Discrete Fourier transform of any length (radix-2 / Bluestein)
 //!
 //! ## Design Philosophy
 //!
@@ -24,6 +26,7 @@
 
 pub mod collections;
 pub mod distributions;
+pub mod fourier;
 pub mod matrix;
 pub mod random;
 pub mod special;

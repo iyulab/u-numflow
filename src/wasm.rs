@@ -10,6 +10,7 @@
 //! - `normal_cdf(x)` → `f64` — standard normal CDF Φ(x), i.e. N(0,1)
 //! - `box_cox(data, lambda)` → `Result<Vec<f64>, JsValue>`
 //! - `estimate_lambda(data, lambda_min, lambda_max)` → `Result<f64, JsValue>`
+//! - `rfft(data)` → `Vec<f64>` — DFT of a real sequence, interleaved `[re0, im0, re1, im1, …]`
 
 #![cfg(feature = "wasm")]
 
@@ -72,4 +73,17 @@ pub fn box_cox(data: &[f64], lambda: f64) -> Result<Vec<f64>, JsValue> {
 pub fn estimate_lambda(data: &[f64], lambda_min: f64, lambda_max: f64) -> Result<f64, JsValue> {
     crate::transforms::estimate_lambda(data, lambda_min, lambda_max)
         .map_err(|e| JsValue::from_str(&e.to_string()))
+}
+
+/// Forward DFT of a real sequence of any length.
+///
+/// Returns the `n` complex bins interleaved as `[re0, im0, re1, im1, …]`
+/// (length `2n`). Bins `k` and `n − k` are conjugates, so the spectrum of a
+/// real signal is fully described by bins `0..=n/2`.
+#[wasm_bindgen]
+pub fn rfft(data: &[f64]) -> Vec<f64> {
+    crate::fourier::rfft(data)
+        .into_iter()
+        .flat_map(|z| [z.re, z.im])
+        .collect()
 }

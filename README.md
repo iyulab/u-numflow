@@ -19,6 +19,7 @@ u-numflow provides foundational mathematical, statistical, and probabilistic bui
 | `distributions` | Probability distributions: Uniform, Triangular, PERT, Normal, LogNormal |
 | `special` | Special functions: normal/t/F/chi² CDF, inverse normal CDF, regularized incomplete beta/gamma, erf |
 | `transforms` | Data transformations: Box-Cox (λ via MLE golden-section search), inverse Box-Cox |
+| `fourier` | Discrete Fourier transform of any length (radix-2 for powers of two, Bluestein otherwise): `fft`, `ifft`, `rfft`, `Complex` |
 | `matrix` | Dense matrix operations: determinant, inverse, Cholesky decomposition, Jacobi eigenvalue decomposition |
 | `random` | Seeded RNG, Fisher-Yates shuffle, weighted sampling, random subset selection |
 | `collections` | Specialized data structures: Union-Find with path compression and union-by-rank |
@@ -62,6 +63,12 @@ use u_numflow::transforms::{estimate_lambda, box_cox};
 let data = [1.0, 2.0, 4.0, 8.0, 16.0];
 let lambda = estimate_lambda(&data, -2.0, 2.0).unwrap(); // MLE via golden-section
 let transformed = box_cox(&data, lambda).unwrap();
+
+// Discrete Fourier transform of any length
+use u_numflow::fourier::rfft;
+let signal: Vec<f64> = (0..30).map(|j| (2.0 * std::f64::consts::PI * 3.0 * j as f64 / 30.0).sin()).collect();
+let spectrum = rfft(&signal);           // 30 complex bins; bin 3 carries the energy
+assert!(spectrum[3].norm() > 14.0);
 ```
 
 ## Build & Test
@@ -92,6 +99,10 @@ The package resolves per environment via a conditional `exports` map:
 |---|---|
 | Bundlers (webpack, Vite, …) | ESM + WebAssembly ESM-integration (`default` condition) |
 | Node.js — `require()`, ESM `import`, CJS TS runners (`tsx`, `ts-node`) | CJS glue loading the wasm from the filesystem (`node` condition) — no loader hooks or flags |
+
+Exported functions: `mean`, `std_dev`, `variance`, `normal_cdf`, `box_cox`, `estimate_lambda`, and
+`rfft(data) -> Float64Array` — the DFT of a real sequence of any length, interleaved as
+`[re0, im0, re1, im1, …]` (bins `k` and `n − k` are conjugates, so `0..=n/2` describes the spectrum).
 
 ## Related
 

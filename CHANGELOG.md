@@ -8,6 +8,17 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ## [Unreleased]
 
+### Added
+
+- `fourier` module -- discrete Fourier transform of a complex or real sequence
+  of any length: `fft`, `ifft`, `rfft` and a minimal `Complex` type. A
+  power-of-two length uses the iterative radix-2 Cooley-Tukey algorithm; any
+  other length uses Bluestein's chirp-z algorithm, so every length is
+  O(n log n). No new dependencies. Property-tested against the naive DFT for
+  every length up to 64, plus Parseval's identity and the Hermitian symmetry of
+  a real signal's spectrum. Also exposed as the WASM function `rfft`
+  (interleaved `[re, im, …]`).
+
 ## [0.4.0] - 2026-09-07
 
 ### Changed (breaking)
