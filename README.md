@@ -17,7 +17,7 @@ u-numflow provides foundational mathematical, statistical, and probabilistic bui
 |--------|-------------|
 | `stats` | Descriptive statistics (mean, variance, skewness, kurtosis) with Welford's online algorithm and Neumaier summation |
 | `distributions` | Probability distributions: Uniform, Triangular, PERT, Normal, LogNormal |
-| `special` | Special functions: normal/t/F/chi² CDF, inverse normal CDF, regularized incomplete beta/gamma, erf |
+| `special` | Special functions: normal CDF and tail-precise survival function (and their inverses), t/F/chi² CDF, regularized incomplete beta/gamma, erf |
 | `transforms` | Data transformations: Box-Cox (λ via MLE golden-section search), inverse Box-Cox |
 | `fourier` | Discrete Fourier transform of any length (radix-2 for powers of two, Bluestein otherwise): `fft`, `ifft`, `rfft`, `Complex` |
 | `matrix` | Dense matrix operations: determinant, inverse, Cholesky decomposition, Jacobi eigenvalue decomposition |
@@ -100,7 +100,7 @@ The package resolves per environment via a conditional `exports` map:
 | Bundlers (webpack, Vite, …) | ESM + WebAssembly ESM-integration (`default` condition) |
 | Node.js — `require()`, ESM `import`, CJS TS runners (`tsx`, `ts-node`) | CJS glue loading the wasm from the filesystem (`node` condition) — no loader hooks or flags |
 
-Exported functions: `mean`, `std_dev`, `variance`, `normal_cdf`, `box_cox`, `estimate_lambda`, and
+Exported functions: `mean`, `std_dev`, `variance`, `normal_cdf`, `normal_sf` (upper tail `P(Z > x)`, computed directly so tail probabilities keep ~15 significant digits), `box_cox`, `estimate_lambda`, and
 `rfft(data) -> Float64Array` — the DFT of a real sequence of any length, interleaved as
 `[re0, im0, re1, im1, …]` (bins `k` and `n − k` are conjugates, so `0..=n/2` describes the spectrum).
 

@@ -8,6 +8,7 @@
 //! - `std_dev(data)` → `f64` (NaN if < 2 elements or invalid)
 //! - `variance(data)` → `f64` (NaN if < 2 elements or invalid)
 //! - `normal_cdf(x)` → `f64` — standard normal CDF Φ(x), i.e. N(0,1)
+//! - `normal_sf(x)` → `f64` — standard normal upper tail P(Z > x), tail-precise
 //! - `box_cox(data, lambda)` → `Result<Vec<f64>, JsValue>`
 //! - `estimate_lambda(data, lambda_min, lambda_max)` → `Result<f64, JsValue>`
 //! - `rfft(data)` → `Vec<f64>` — DFT of a real sequence, interleaved `[re0, im0, re1, im1, …]`
@@ -44,10 +45,21 @@ pub fn variance(data: &[f64]) -> f64 {
 ///
 /// To evaluate a general normal N(μ, σ), pass `(x - μ) / σ`.
 ///
-/// Uses Abramowitz & Stegun formula 26.2.17 (max abs error < 7.5 × 10⁻⁸).
+/// Computed as `erfc(−x/√2)/2` with a direct `erfc`, so the lower tail keeps
+/// relative precision. For the upper tail use [`normal_sf`].
 #[wasm_bindgen]
 pub fn normal_cdf(x: f64) -> f64 {
     crate::special::standard_normal_cdf(x)
+}
+
+/// Standard normal survival function P(Z > x) = 1 − Φ(x) for Z ~ N(0, 1).
+///
+/// Computed directly (not as `1 − normal_cdf(x)`), so upper-tail
+/// probabilities such as PPM defect rates keep their significant digits:
+/// `normal_sf(6)` is `9.865876450376948e-10` to about 15 digits.
+#[wasm_bindgen]
+pub fn normal_sf(x: f64) -> f64 {
+    crate::special::standard_normal_sf(x)
 }
 
 /// Apply the Box-Cox power transformation to positive data.
