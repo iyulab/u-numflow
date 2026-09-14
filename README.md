@@ -100,7 +100,7 @@ The package resolves per environment via a conditional `exports` map:
 | Bundlers (webpack, Vite, …) | ESM + WebAssembly ESM-integration (`default` condition) |
 | Node.js — `require()`, ESM `import`, CJS TS runners (`tsx`, `ts-node`) | CJS glue loading the wasm from the filesystem (`node` condition) — no loader hooks or flags |
 
-Exported functions: `mean`, `std_dev`, `variance`, `normal_cdf`, `normal_sf` (upper tail `P(Z > x)`, computed directly so tail probabilities keep ~15 significant digits), `box_cox`, `estimate_lambda`, and
+Exported functions: `mean`, `std_dev`, `variance`, `normal_cdf`, `normal_sf` (upper tail `P(Z > x)`, computed directly so tail probabilities keep ~15 significant digits), `box_cox`, `estimate_lambda` (returns `{ lambda, at_bound }` — `at_bound` is `true` when the likelihood was still rising at an end of the search range, so `lambda` is that limit), and
 `rfft(data) -> Float64Array` — the DFT of a real sequence of any length, interleaved as
 `[re0, im0, re1, im1, …]` (bins `k` and `n − k` are conjugates, so `0..=n/2` describes the spectrum).
 

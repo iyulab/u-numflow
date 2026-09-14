@@ -10,7 +10,7 @@
 //! - `normal_cdf(x)` → `f64` — standard normal CDF Φ(x), i.e. N(0,1)
 //! - `normal_sf(x)` → `f64` — standard normal upper tail P(Z > x), tail-precise
 //! - `box_cox(data, lambda)` → `Result<Vec<f64>, JsValue>`
-//! - `estimate_lambda(data, lambda_min, lambda_max)` → `Result<f64, JsValue>`
+//! - `estimate_lambda(data, lambda_min, lambda_max)` → `{ lambda, at_bound }` (or throws)
 //! - `rfft(data)` → `Vec<f64>` — DFT of a real sequence, interleaved `[re0, im0, re1, im1, …]`
 
 #![cfg(feature = "wasm")]
@@ -74,17 +74,34 @@ pub fn box_cox(data: &[f64], lambda: f64) -> Result<Vec<f64>, JsValue> {
     crate::transforms::box_cox(data, lambda).map_err(|e| JsValue::from_str(&e.to_string()))
 }
 
+/// Output of [`estimate_lambda`]: `{ lambda, at_bound }`.
+#[derive(serde::Serialize)]
+struct LambdaEstimateDto {
+    lambda: f64,
+    at_bound: bool,
+}
+
 /// Estimate the optimal Box-Cox lambda via profile maximum likelihood.
 ///
-/// Searches in the range `[lambda_min, lambda_max]` using golden-section search.
+/// Searches in the range `[lambda_min, lambda_max]` using golden-section search
+/// and returns `{ lambda: number, at_bound: boolean }`. `at_bound` is `true`
+/// when the maximum lies on an end of the range — the likelihood was still
+/// rising there, so `lambda` is that range limit (reported exactly), not an
+/// interior estimate; widen the range to find the unconstrained optimum.
 ///
 /// # Errors
 /// Returns a `JsValue` error string if data contains non-positive values,
-/// has fewer than 2 elements, or `lambda_min >= lambda_max`.
+/// has fewer than 2 elements, or the range is not finite with
+/// `lambda_min < lambda_max`.
 #[wasm_bindgen]
-pub fn estimate_lambda(data: &[f64], lambda_min: f64, lambda_max: f64) -> Result<f64, JsValue> {
-    crate::transforms::estimate_lambda(data, lambda_min, lambda_max)
-        .map_err(|e| JsValue::from_str(&e.to_string()))
+pub fn estimate_lambda(data: &[f64], lambda_min: f64, lambda_max: f64) -> Result<JsValue, JsValue> {
+    let est = crate::transforms::estimate_lambda(data, lambda_min, lambda_max)
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+    serde_wasm_bindgen::to_value(&LambdaEstimateDto {
+        lambda: est.lambda,
+        at_bound: est.at_bound,
+    })
+    .map_err(|e| JsValue::from_str(&e.to_string()))
 }
 
 /// Forward DFT of a real sequence of any length.

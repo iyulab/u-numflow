@@ -8,6 +8,18 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ## [Unreleased]
 
+### Changed (breaking)
+
+- **`transforms::estimate_lambda` returns a `LambdaEstimate { lambda, at_bound }`**
+  instead of a bare `f64`. `at_bound` is `true` when the likelihood maximum is on
+  an end of the search range — the likelihood was still rising there, so the
+  range cut the search short — and `lambda` is then that range limit exactly
+  (previously the bracket midpoint, e.g. `1.9999996` for a range ending at 2,
+  indistinguishable from an interior estimate). The WASM function
+  `estimate_lambda` returns `{ lambda, at_bound }` likewise.
+- An empty or non-finite λ range is now `TransformError::InvalidLambdaRange`
+  (previously misreported as `InsufficientData`).
+
 ### Added
 
 - `special::standard_normal_sf(x)` -- the normal upper tail `P(Z > x)`,
