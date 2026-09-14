@@ -23,6 +23,9 @@ pub enum TransformError {
     NonFiniteData,
     /// Need at least 2 data points.
     InsufficientData,
+    /// The forward transformation produced non-finite values (`y^λ` beyond
+    /// the range of `f64`, or a non-finite λ).
+    InvalidTransform,
     /// Inverse transformation produced non-finite values.
     InvalidInverse,
     /// The λ search range is empty or not finite (`lambda_min >= lambda_max`).
@@ -40,6 +43,9 @@ impl fmt::Display for TransformError {
             }
             TransformError::InsufficientData => {
                 write!(f, "need at least 2 data points")
+            }
+            TransformError::InvalidTransform => {
+                write!(f, "transformation produced non-finite values")
             }
             TransformError::InvalidInverse => {
                 write!(f, "inverse transformation produced non-finite values")
@@ -86,6 +92,9 @@ fn validate_positive_slice(y: &[f64]) -> Result<(), TransformError> {
 /// - [`TransformError::InsufficientData`] — fewer than 2 data points
 /// - [`TransformError::NonPositiveData`]  — any element ≤ 0
 /// - [`TransformError::NonFiniteData`]    — any element is NaN or infinite
+/// - [`TransformError::InvalidTransform`] — a result is not finite (`y^λ`
+///   overflows, or `lambda` is not finite); the mirror of
+///   [`inverse_box_cox`]'s `InvalidInverse`
 ///
 /// # Examples
 /// ```
@@ -101,8 +110,13 @@ pub fn box_cox(y: &[f64], lambda: f64) -> Result<Vec<f64>, TransformError> {
     let result = if lambda.abs() < 1e-10 {
         y.iter().map(|&v| v.ln()).collect()
     } else {
-        y.iter().map(|&v| (v.powf(lambda) - 1.0) / lambda).collect()
+        y.iter()
+            .map(|&v| (v.powf(lambda) - 1.0) / lambda)
+            .collect::<Vec<_>>()
     };
+    if result.iter().any(|v| !v.is_finite()) {
+        return Err(TransformError::InvalidTransform);
+    }
     Ok(result)
 }
 
@@ -406,6 +420,19 @@ mod tests {
             estimate_lambda(&[1.0], -2.0, 2.0),
             Err(TransformError::InsufficientData)
         );
+    }
+
+    #[test]
+    fn forward_overflow_is_reported_like_the_inverse() {
+        assert_eq!(
+            box_cox(&[1e200, 2.0], 5.0),
+            Err(TransformError::InvalidTransform)
+        );
+        assert_eq!(
+            box_cox(&[1.0, 2.0], f64::NAN),
+            Err(TransformError::InvalidTransform)
+        );
+        assert!(box_cox(&[1e20, 2.0], 5.0).is_ok());
     }
 
     #[test]

@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Maintained from 0.2.1 onward; earlier entries list release dates only (see git history).
 
-## [Unreleased]
+## [0.6.0] - 2026-09-15
 
 ### Changed (breaking)
 
@@ -44,6 +44,13 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
   `erfc(−x/√2)/2`, with relative error of order 1e-15 in both tails.
 - **`inverse_normal_cdf` was accurate only to `4.5e-4`** (A&S 26.2.23). It is
   now Wichura's AS 241 (PPND16), accurate to about 1 part in 1e16.
+- **`estimate_lambda` could panic** when `y^λ` overflowed `f64` for a λ in the
+  search range (large data, large |λ|): the non-finite transform reached an
+  `expect` on its variance. Such a λ is now not a candidate. Data containing NaN
+  or an infinity is refused as `TransformError::NonFiniteData` (it passed the
+  positivity check before).
+- `box_cox` refuses a result that is not finite (`TransformError::InvalidTransform`),
+  as `inverse_box_cox` already did for its own direction.
 
 Every value these functions return changes in its trailing digits; results
 that depended on the old approximations' error (tolerance-pinned tests, cached
