@@ -6,6 +6,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Maintained from 0.2.1 onward; earlier entries list release dates only (see git history).
 
+## [Unreleased]
+
+### Fixed
+
+- **`transforms::estimate_lambda` no longer stops short of the range on a
+  narrow sample, and no longer calls that stop an interior estimate.** Two
+  faults that hid each other:
+
+  - The profile likelihood was computed from the unnormalised transform
+    `(y^λ - 1)/λ`. For a sample clustered well away from 1 -- 250 readings
+    inside a 0.13 % band around 25 -- `y^λ` is about `1e-7` at `λ = -5`, so
+    every transformed value sits next to `-1` and the differences between them,
+    which are all the variance is made of, fall off the bottom of the mantissa.
+    The likelihood came out non-monotone at the `1e-5` level and the search
+    converged on that noise. It is now computed from the geometric-mean
+    normalised transform `g·expm1(λ·ln(y/g))/λ` (Box & Cox 1964, §3), which
+    keeps the differences at full precision and folds in the Jacobian.
+  - `at_bound` asked the golden-section search whether an end of its bracket
+    had ever moved. A likelihood that is monotone across the range leaves the
+    bracket in the middle, so a λ on the edge of the range was reported as
+    interior. It is now decided by comparing the likelihood at each end against
+    the interior candidate.
+
+  On the sample above, `estimate_lambda(y, -5.0, 5.0)` returned
+  `{ lambda: -4.992668718202271, at_bound: false }` and now returns
+  `{ lambda: -5.0, at_bound: true }`.
+
+- **`transforms::box_cox` computes `expm1(λ·ln y)` rather than `y^λ - 1`.**
+  The two agree mathematically; the second loses the result to cancellation
+  whenever `y^λ` is near 1, which is every λ near zero and every `y` near one.
+
 ## [0.6.0] - 2026-09-15
 
 ### Changed (breaking)

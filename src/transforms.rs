@@ -107,11 +107,14 @@ fn validate_positive_slice(y: &[f64]) -> Result<(), TransformError> {
 /// ```
 pub fn box_cox(y: &[f64], lambda: f64) -> Result<Vec<f64>, TransformError> {
     validate_positive_slice(y)?;
+    // `expm1(λ·ln y)` rather than `y^λ - 1`: the two agree mathematically, and
+    // the second loses the whole result to cancellation whenever `y^λ` is near
+    // 1 (a λ near zero, or a `y` near one).
     let result = if lambda.abs() < 1e-10 {
         y.iter().map(|&v| v.ln()).collect()
     } else {
         y.iter()
-            .map(|&v| (v.powf(lambda) - 1.0) / lambda)
+            .map(|&v| (lambda * v.ln()).exp_m1() / lambda)
             .collect::<Vec<_>>()
     };
     if result.iter().any(|v| !v.is_finite()) {
@@ -174,20 +177,32 @@ pub struct LambdaEstimate {
 
 /// Estimate the optimal Box-Cox λ via maximum likelihood.
 ///
-/// Maximises the profile log-likelihood:
+/// Maximises the profile log-likelihood of the **normalised** transform
+/// (Box & Cox 1964, §3), where `g` is the geometric mean of the sample:
 ///
 /// ```text
-/// ℓ(λ) = -(n/2)·ln(Var_population(y(λ))) + (λ-1)·Σ ln(yᵢ)
+/// z(λ) = g·expm1(λ·ln(y/g)) / λ        (λ ≠ 0)
+///        g·ln(y/g)                      (λ = 0)
+/// ℓ(λ) = -(n/2)·ln(Var_population(z))
 /// ```
 ///
-/// using a **golden-section search** over `[lambda_min, lambda_max]` with up
-/// to 100 iterations (terminating early when the bracket width < 1e-6).
+/// Normalising is what makes the likelihood computable, not merely tidier.
+/// The unnormalised `(y^λ - 1)/λ` puts every value next to `-1` when `y^λ` is
+/// small -- `y ≈ 25`, `λ = -5` gives `y^λ ≈ 1e-7` -- so the differences between
+/// samples, which are all the variance is made of, fall off the bottom of the
+/// mantissa. Dividing through by `g^(λ-1)` recentres the values on zero and
+/// keeps those differences at full precision; it also folds in the Jacobian,
+/// which is why no `(λ-1)·Σ ln(yᵢ)` term appears above.
 ///
-/// The result says whether the maximum was found on an end of the range
-/// ([`LambdaEstimate::at_bound`]): a λ of `lambda_max` because the likelihood
-/// peaks there is indistinguishable by value from one where the likelihood
-/// keeps rising past it, and only the latter means the range cut the search
-/// short.
+/// The search is a **golden-section search** over `[lambda_min, lambda_max]`
+/// with up to 100 iterations (terminating early when the bracket width < 1e-6).
+///
+/// The result says whether the maximum lies on an end of the range
+/// ([`LambdaEstimate::at_bound`]), decided by **comparing the likelihood at the
+/// ends against the interior candidate** rather than by where the search
+/// happened to stop. A likelihood that is monotone across the range leaves the
+/// bracket somewhere in the middle, so asking the search where it landed
+/// answers a different question than the one a caller is asking.
 ///
 /// # Errors
 /// - [`TransformError::InvalidLambdaRange`] — `lambda_min >= lambda_max`, or
@@ -217,22 +232,30 @@ pub fn estimate_lambda(
     validate_positive_slice(y)?;
 
     let n = y.len() as f64;
-    let log_sum: f64 = y.iter().map(|&v| v.ln()).sum::<f64>();
+    // ln(yᵢ/g) about the geometric mean, which is where the normalised
+    // transform is evaluated. Small and well-scaled for a clustered sample --
+    // the case the unnormalised form cannot measure.
+    let log_g: f64 = y.iter().map(|&v| v.ln()).sum::<f64>() / n;
+    let g = log_g.exp();
+    let log_ratio: Vec<f64> = y.iter().map(|&v| v.ln() - log_g).collect();
 
-    // Profile log-likelihood (higher is better).
+    // Profile log-likelihood of the normalised transform (higher is better).
     let profile_ll = |lambda: f64| -> f64 {
-        let y_t: Vec<f64> = if lambda.abs() < 1e-10 {
-            y.iter().map(|&v| v.ln()).collect()
+        let z: Vec<f64> = if lambda.abs() < 1e-10 {
+            log_ratio.iter().map(|&r| g * r).collect()
         } else {
-            y.iter().map(|&v| (v.powf(lambda) - 1.0) / lambda).collect()
+            log_ratio
+                .iter()
+                .map(|&r| g * (lambda * r).exp_m1() / lambda)
+                .collect()
         };
-        // A λ whose transform overflows (`y^λ` beyond f64 for large |λ| or
-        // large y) has no finite variance: it is not a candidate, not a panic.
-        let var = match population_variance(&y_t) {
+        // A λ whose transform overflows (for large |λ| and a wide sample) has
+        // no finite variance: it is not a candidate, not a panic.
+        let var = match population_variance(&z) {
             Some(v) if v > 0.0 && v.is_finite() => v,
             _ => return f64::NEG_INFINITY,
         };
-        -(n / 2.0) * var.ln() + (lambda - 1.0) * log_sum
+        -(n / 2.0) * var.ln()
     };
 
     // Golden-section search (maximisation).
@@ -264,19 +287,28 @@ pub fn estimate_lambda(
         }
     }
 
-    // Golden-section only ever moves the end of the bracket on the side away
-    // from the maximum. An end that never moved means every comparison pointed
-    // toward it: the maximum is on that end of the range.
-    // On a bound the constrained maximiser *is* that bound, so report it exactly
-    // rather than the bracket midpoint half a tolerance inside it.
-    let (lambda, at_bound) = if a == lambda_min {
-        (lambda_min, true)
-    } else if b == lambda_max {
-        (lambda_max, true)
-    } else {
-        ((a + b) / 2.0, false)
-    };
-    Ok(LambdaEstimate { lambda, at_bound })
+    // Ask the likelihood where its maximum is, rather than the search where it
+    // stopped. A golden-section bracket narrows on the best of the points it
+    // sampled, which on a monotone likelihood is an interior point it has no
+    // reason to leave -- so "the bracket touches an end" and "the maximum is at
+    // an end" are different statements, and only the second is what a caller
+    // needs. On a bound the constrained maximiser *is* that bound, so report it
+    // exactly rather than a point a tolerance inside it.
+    let interior = (a + b) / 2.0;
+    let candidates = [
+        (lambda_min, profile_ll(lambda_min)),
+        (lambda_max, profile_ll(lambda_max)),
+        (interior, profile_ll(interior)),
+    ];
+    let &(best, _) = candidates
+        .iter()
+        .max_by(|(_, p), (_, q)| p.total_cmp(q))
+        .expect("the candidate array is never empty");
+    let at_bound = best == lambda_min || best == lambda_max;
+    Ok(LambdaEstimate {
+        lambda: best,
+        at_bound,
+    })
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -346,6 +378,104 @@ mod tests {
                 (lambda0 * z + 1.0).powf(1.0 / lambda0)
             })
             .collect()
+    }
+
+    /// A sample whose values sit inside a 0.13 % band: the profile likelihood
+    /// is monotone across any symmetric range, so the estimate belongs on the
+    /// lower end of it.
+    ///
+    /// Both halves of this used to be wrong together, and each hid the other.
+    /// The unnormalised transform put every value next to `-1` (`25^-5` is
+    /// about `1e-7`), which left the likelihood non-monotone at the `1e-5`
+    /// level; golden-section converged on that noise at `-4.9927`, an interior
+    /// point, so the search's own "did an end of the bracket ever move" test
+    /// then reported `at_bound: false` -- a λ a caller could not tell from a
+    /// real optimum.
+    #[test]
+    fn a_narrow_sample_puts_its_estimate_on_the_end_of_the_range() {
+        let y = vec![
+            24.994, 25.007, 24.998, 25.006, 24.993, 25.002, 24.996, 25.004, 24.995, 25.005, 25.007,
+            24.995, 25.005, 24.993, 25.006, 24.996, 25.004, 24.998, 25.002, 24.994, 24.996, 25.004,
+            24.994, 25.006, 24.998, 25.002, 24.993, 25.007, 24.995, 25.005, 25.005, 24.995, 25.003,
+            24.993, 25.007, 24.996, 25.006, 24.994, 25.004, 24.997, 24.993, 25.006, 24.997, 25.005,
+            24.994, 25.007, 24.996, 25.004, 24.998, 25.0, 25.009, 24.999, 25.01, 24.998, 25.008,
+            25.002, 24.997, 25.006, 25.011, 25.0, 25.011, 25.0, 24.998, 25.006, 24.999, 25.009,
+            25.002, 24.997, 25.008, 25.01, 24.997, 25.01, 25.002, 24.999, 25.008, 25.011, 24.998,
+            25.009, 25.0, 25.006, 25.006, 24.999, 25.011, 25.002, 24.998, 25.01, 25.009, 24.997,
+            25.0, 25.008, 25.008, 25.01, 24.997, 25.006, 25.011, 24.999, 25.009, 25.002, 24.998,
+            25.0, 25.0, 24.997, 25.009, 25.011, 25.006, 24.998, 25.01, 24.999, 25.008, 25.002,
+            25.002, 25.008, 25.0, 24.999, 25.01, 25.006, 24.997, 25.011, 24.998, 25.009, 25.01,
+            25.002, 25.009, 24.997, 25.001, 25.008, 24.999, 25.006, 25.011, 24.997, 24.999, 25.01,
+            25.006, 24.998, 25.009, 25.001, 25.011, 25.008, 25.002, 24.996, 25.005, 24.994, 25.007,
+            24.996, 24.993, 25.006, 24.998, 25.004, 24.995, 25.002, 24.996, 25.003, 24.993, 25.007,
+            25.004, 24.995, 25.006, 24.994, 25.002, 25.0, 25.007, 24.998, 25.004, 24.993, 25.005,
+            24.996, 25.002, 24.994, 25.006, 24.995, 24.993, 25.006, 24.995, 25.004, 24.997, 25.007,
+            24.994, 25.002, 24.996, 25.006, 25.004, 24.997, 25.006, 24.994, 25.002, 24.993, 25.005,
+            24.996, 25.007, 24.996, 24.995, 25.005, 24.998, 25.003, 24.993, 25.007, 24.996, 25.004,
+            24.994, 25.005, 24.996, 25.003, 24.998, 25.002, 24.997, 25.004, 25.0, 25.023, 25.025,
+            25.021, 25.006, 24.994, 25.003, 24.997, 25.005, 24.998, 25.007, 24.995, 25.002, 24.993,
+            24.994, 25.007, 24.997, 25.006, 24.993, 25.005, 24.996, 25.003, 24.999, 25.0, 25.003,
+            24.996, 25.007, 24.994, 25.005, 24.997, 25.002, 24.993, 25.006, 24.997, 24.997, 25.004,
+            24.993, 25.006, 24.998, 25.005, 24.995, 25.007, 24.994, 25.001,
+        ];
+        assert_eq!(y.len(), 250);
+
+        for (min, max) in [(-5.0, 5.0), (-20.0, 20.0), (-40.0, 40.0)] {
+            let est = estimate_lambda(&y, min, max).expect("positive, finite data");
+            assert!(est.at_bound, "[{min}, {max}] -> {est:?}");
+            assert_eq!(est.lambda, min, "[{min}, {max}] -> {est:?}");
+        }
+
+        // The likelihood really is monotone here: it decreases from one end of
+        // the range to the other, which is the fact the estimate reports.
+        let ll = |lambda: f64| {
+            let z = box_cox_normalised(&y, lambda);
+            let n = y.len() as f64;
+            let mean = z.iter().sum::<f64>() / n;
+            let var = z.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / n;
+            -(n / 2.0) * var.ln()
+        };
+        let grid = [
+            -40.0, -20.0, -10.0, -6.5, -5.0, -2.0, 0.0, 2.0, 5.0, 10.0, 20.0, 40.0,
+        ];
+        for pair in grid.windows(2) {
+            assert!(
+                ll(pair[0]) > ll(pair[1]),
+                "ll({}) = {} must exceed ll({}) = {}",
+                pair[0],
+                ll(pair[0]),
+                pair[1],
+                ll(pair[1])
+            );
+        }
+    }
+
+    /// The normalised transform, written out independently of the estimator so
+    /// the test above measures the likelihood rather than restating it.
+    fn box_cox_normalised(y: &[f64], lambda: f64) -> Vec<f64> {
+        let n = y.len() as f64;
+        let log_g = y.iter().map(|v| v.ln()).sum::<f64>() / n;
+        let g = log_g.exp();
+        y.iter()
+            .map(|v| {
+                let r = v.ln() - log_g;
+                if lambda.abs() < 1e-10 {
+                    g * r
+                } else {
+                    g * (lambda * r).exp_m1() / lambda
+                }
+            })
+            .collect()
+    }
+
+    /// An interior optimum is still reported as interior: the endpoint
+    /// comparison must not turn every estimate into a bound.
+    #[test]
+    fn an_interior_optimum_is_not_reported_as_a_bound() {
+        let y = normal_after_boxcox(1.0, 200);
+        let est = estimate_lambda(&y, -5.0, 5.0).expect("positive, finite data");
+        assert!(!est.at_bound, "{est:?}");
+        assert!((est.lambda - 1.0).abs() < 0.5, "{est:?}");
     }
 
     #[test]

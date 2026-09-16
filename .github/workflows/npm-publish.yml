@@ -77,6 +77,45 @@ jobs:
           node -e "const m = require('$PKG_NAME'); if (!Object.keys(m).length) throw new Error('empty CJS exports')"
           node --input-type=module -e "import('$PKG_NAME').then(m => { if (!Object.keys(m).length) throw new Error('empty ESM exports') })"
 
+      - name: Binding behaviour gate
+        run: |
+          PKG_NAME=$(node -p "require('./pkg/package.json').name")
+          cd "$RUNNER_TEMP/smoke"
+          cat > gate.mjs <<'EOF'
+          import { createRequire } from 'node:module'
+          const require = createRequire(import.meta.url)
+          const m = require(process.env.PKG_NAME)
+          const ok = (c, msg) => { if (!c) { console.error('FAIL: ' + msg); process.exit(1) } }
+
+          // A sample inside a 0.1 % band with a short upper tail: the profile
+          // likelihood is monotone across any symmetric range, so the estimate
+          // belongs on the lower end of it and must say so. Computed from the
+          // unnormalised transform the likelihood is instead noise at the 1e-5
+          // level, and the search settles just inside the bound and calls that
+          // an interior optimum -- which is what a caller cannot tell apart.
+          const narrow = Array.from({ length: 57 }, (_, i) => 25 + ((i * 7) % 13 - 6) * 0.002)
+            .concat([25.021, 25.023, 25.025])
+          for (const [lo, hi] of [[-5, 5], [-20, 20]]) {
+            const e = m.estimate_lambda(narrow, lo, hi)
+            ok(e.at_bound === true, `estimate_lambda(narrow, ${lo}, ${hi}).at_bound=${e.at_bound}`)
+            ok(e.lambda === lo, `estimate_lambda(narrow, ${lo}, ${hi}).lambda=${e.lambda}`)
+          }
+
+          // An interior optimum stays interior: the endpoint comparison must
+          // not turn every estimate into a bound.
+          const expo = Array.from({ length: 30 }, (_, i) => Math.exp((i + 1) * 0.2))
+          const e = m.estimate_lambda(expo, -2, 2)
+          ok(e.at_bound === false, `exponential sample reported at_bound=${e.at_bound}`)
+          ok(Math.abs(e.lambda) < 0.3, `exponential sample lambda=${e.lambda}`)
+
+          // box_cox keeps its meaning where the old expression could still read it.
+          const bc = m.box_cox([1, Math.E], 0)
+          ok(Math.abs(bc[0]) < 1e-12 && Math.abs(bc[1] - 1) < 1e-9, `box_cox lambda=0 gave ${bc}`)
+
+          console.log('binding behaviour gate: ok')
+          EOF
+          PKG_NAME="$PKG_NAME" node gate.mjs
+
       - name: Publish to npm
         run: |
           cd pkg
