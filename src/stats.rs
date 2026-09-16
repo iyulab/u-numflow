@@ -298,7 +298,10 @@ pub fn quantile_sorted(sorted_data: &[f64], p: f64) -> Option<f64> {
 /// central moments in a single sweep.
 ///
 /// Reference: Joanes & Gill (1998), "Comparing measures of sample skewness
-/// and kurtosis", *The Statistician* 47(1), pp. 183–189.
+/// and kurtosis", *The Statistician* 47(1), pp. 183–189 (their `G₁`).
+///
+/// See [`skewness_moment`] for the uncorrected `g₁` that published moment
+/// formulas and SciPy/R/statsmodels use.
 ///
 /// # Complexity
 /// Time: O(n), Space: O(1)
@@ -407,6 +410,114 @@ pub fn kurtosis(data: &[f64]) -> Option<f64> {
     let a = nf * (nf + 1.0) / ((nf - 1.0) * (nf - 2.0) * (nf - 3.0));
     let b = 3.0 * (nf - 1.0) * (nf - 1.0) / ((nf - 2.0) * (nf - 3.0));
     Some(a * sum_z4 - b)
+}
+
+/// Computes the moment coefficient of skewness, `g₁`.
+///
+/// # Formula
+/// ```text
+/// g₁ = m₃ / m₂^(3/2),   mₖ = Σ(xᵢ − x̄)ᵏ / n
+/// ```
+///
+/// This is the sample skewness with no bias correction -- the `b₁` of the
+/// classical moment tests and SciPy's `skew(bias=True)`. [`skewness`] returns
+/// the bias-adjusted `G₁` that Excel's `SKEW()` reports; the two differ by a
+/// factor of `√(n(n−1))/(n−2)`, which is 8 % at n = 20 and still 1 % at n = 150.
+///
+/// Reach for this one when a published formula is written in moment ratios --
+/// Jarque-Bera, D'Agostino's K² -- or when matching SciPy, R's `e1071::skewness`
+/// type 1, or statsmodels. Reach for [`skewness`] when reporting a descriptive
+/// statistic next to one of those spreadsheets.
+///
+/// Reference: Joanes & Gill (1998), "Comparing measures of sample skewness
+/// and kurtosis", *The Statistician* 47(1), pp. 183-189 (their `g₁`).
+///
+/// # Complexity
+/// Time: O(n), Space: O(1)
+///
+/// # Returns
+/// - `None` if `data.len() < 3`, data contains NaN/Inf, or variance is zero.
+///
+/// # Examples
+/// ```
+/// use u_numflow::stats::{skewness, skewness_moment};
+///
+/// let right = [1.0, 2.0, 3.0, 4.0, 50.0];
+/// let g1 = skewness_moment(&right).unwrap();
+/// let big_g1 = skewness(&right).unwrap();
+/// assert!(g1 > 0.0 && big_g1 > g1, "the adjustment only ever inflates");
+/// ```
+pub fn skewness_moment(data: &[f64]) -> Option<f64> {
+    let (_, m2, m3, _) = central_moments(data, 3)?;
+    Some(m3 / m2.powf(1.5))
+}
+
+/// Computes the moment coefficient of excess kurtosis, `g₂`.
+///
+/// # Formula
+/// ```text
+/// g₂ = m₄ / m₂² − 3,   mₖ = Σ(xᵢ − x̄)ᵏ / n
+/// ```
+///
+/// This is the sample excess kurtosis with no bias correction -- the `b₂ − 3`
+/// of the classical moment tests and SciPy's `kurtosis(bias=True)`.
+/// [`kurtosis`] returns the bias-adjusted `G₂` that Excel's `KURT()` reports.
+/// The two are related by `G₂ = (n−1)·((n+1)·g₂ + 6) / ((n−2)(n−3))`, so they
+/// disagree even on the sign for a mildly platykurtic sample: at n = 20,
+/// `g₂ = −0.3` comes back as `G₂ = −0.02`.
+///
+/// Same choice as [`skewness_moment`]: this one for a published formula written
+/// in moment ratios or for agreeing with SciPy/R/statsmodels, [`kurtosis`] for
+/// a descriptive statistic beside a spreadsheet.
+///
+/// Reference: Joanes & Gill (1998), *The Statistician* 47(1) (their `g₂`).
+///
+/// # Complexity
+/// Time: O(n), Space: O(1)
+///
+/// # Returns
+/// - `None` if `data.len() < 4`, data contains NaN/Inf, or variance is zero.
+///
+/// # Examples
+/// ```
+/// use u_numflow::stats::kurtosis_moment;
+///
+/// // Uniform-ish data is platykurtic: excess kurtosis below zero.
+/// let flat: Vec<f64> = (1..=40).map(|i| i as f64).collect();
+/// assert!(kurtosis_moment(&flat).unwrap() < 0.0);
+/// ```
+pub fn kurtosis_moment(data: &[f64]) -> Option<f64> {
+    let (_, m2, _, m4) = central_moments(data, 4)?;
+    Some(m4 / (m2 * m2) - 3.0)
+}
+
+/// Central moments `(m₁ = 0, m₂, m₃, m₄)` in one pass, to the order asked for.
+///
+/// Returns `None` on the same conditions every estimator built on it refuses:
+/// too few points for `order`, a non-finite value, or no spread at all.
+fn central_moments(data: &[f64], order: usize) -> Option<(f64, f64, f64, f64)> {
+    let n = data.len();
+    if n < order {
+        return None;
+    }
+    if !data.iter().all(|x| x.is_finite()) {
+        return None;
+    }
+    let nf = n as f64;
+    let mean = kahan_sum(data) / nf;
+    let (mut s2, mut s3, mut s4) = (0.0, 0.0, 0.0);
+    for &x in data {
+        let d = x - mean;
+        let d2 = d * d;
+        s2 += d2;
+        s3 += d2 * d;
+        s4 += d2 * d2;
+    }
+    let m2 = s2 / nf;
+    if m2 == 0.0 {
+        return None;
+    }
+    Some((0.0, m2, s3 / nf, s4 / nf))
 }
 
 /// Computes the sample covariance between two datasets.
@@ -717,6 +828,60 @@ mod tests {
     use super::*;
 
     // --- mean ---
+
+    /// The moment estimators are the ones published formulas are written in,
+    /// and they are not the adjusted ones the descriptive functions report.
+    #[test]
+    fn moment_and_adjusted_estimators_are_related_but_not_equal() {
+        let data = [
+            2.1, 3.4, 1.9, 5.6, 2.2, 3.1, 4.8, 2.9, 3.3, 7.2, 2.5, 3.0, 4.1, 2.7, 3.8, 2.4, 6.1,
+            3.6, 2.8, 3.2,
+        ];
+        let n = data.len() as f64;
+
+        let g1 = skewness_moment(&data).expect("20 finite points with spread");
+        let big_g1 = skewness(&data).expect("same");
+        // G1 = g1 * sqrt(n(n-1)) / (n-2) -- the adjustment only ever inflates.
+        let expected = g1 * (n * (n - 1.0)).sqrt() / (n - 2.0);
+        assert!((big_g1 - expected).abs() < 1e-12, "{big_g1} vs {expected}");
+        assert!(big_g1 > g1, "at n = 20 the adjustment is about 8 %");
+
+        let g2 = kurtosis_moment(&data).expect("20 finite points with spread");
+        let big_g2 = kurtosis(&data).expect("same");
+        // G2 = (n-1)((n+1) g2 + 6) / ((n-2)(n-3)).
+        let expected = (n - 1.0) * ((n + 1.0) * g2 + 6.0) / ((n - 2.0) * (n - 3.0));
+        assert!((big_g2 - expected).abs() < 1e-12, "{big_g2} vs {expected}");
+
+        // Values computed independently from the definition.
+        assert!((g1 - 1.236_103_873_8).abs() < 1e-9, "g1 = {g1}");
+        assert!((g2 - 0.751_429_343_3).abs() < 1e-9, "g2 = {g2}");
+    }
+
+    /// The correction can carry `g2` across zero, which is why a caller that
+    /// needs one of them cannot substitute the other.
+    #[test]
+    fn the_kurtosis_adjustment_can_change_the_sign_at_a_small_sample() {
+        // 20 points, mildly platykurtic.
+        let data: Vec<f64> = (0..20).map(|i| (i as f64) - 9.5).collect();
+        let g2 = kurtosis_moment(&data).expect("spread");
+        let big_g2 = kurtosis(&data).expect("spread");
+        assert!(g2 < 0.0, "a uniform ramp is platykurtic: {g2}");
+        assert!(g2 < big_g2, "the adjustment lifts it: {g2} -> {big_g2}");
+    }
+
+    #[test]
+    fn moment_estimators_refuse_what_the_adjusted_ones_refuse() {
+        assert_eq!(skewness_moment(&[1.0, 2.0]), None, "fewer than 3");
+        assert_eq!(kurtosis_moment(&[1.0, 2.0, 3.0]), None, "fewer than 4");
+        assert_eq!(skewness_moment(&[2.0; 5]), None, "no spread");
+        assert_eq!(kurtosis_moment(&[2.0; 5]), None, "no spread");
+        assert_eq!(skewness_moment(&[1.0, 2.0, f64::NAN]), None, "not finite");
+        assert_eq!(
+            kurtosis_moment(&[1.0, 2.0, 3.0, f64::INFINITY]),
+            None,
+            "not finite"
+        );
+    }
 
     #[test]
     fn test_mean_basic() {

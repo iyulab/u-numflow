@@ -8,6 +8,21 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ## [Unreleased]
 
+### Added
+
+- **`stats::skewness_moment` and `stats::kurtosis_moment`** — the moment
+  coefficients `g₁ = m₃/m₂^(3/2)` and `g₂ = m₄/m₂² − 3`, with no bias
+  correction. These are what published moment formulas (Jarque-Bera,
+  D'Agostino's K²) are written in, and what SciPy's `bias=True`, R's
+  `e1071` type 1 and statsmodels compute. `skewness` and `kurtosis` keep
+  returning the bias-adjusted `G₁`/`G₂` that Excel's `SKEW()`/`KURT()` report.
+
+  The crate already computed both pairs — the adjusted ones are the moment ones
+  times a factor — and returned only one of them, so a caller who needed the
+  other had to recompute the central moments from scratch. At n = 20 the two
+  skewness estimators differ by 8 %, and the kurtosis adjustment can carry a
+  mildly platykurtic sample across zero.
+
 ### Fixed
 
 - **`transforms::estimate_lambda` no longer stops short of the range on a
