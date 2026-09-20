@@ -75,7 +75,7 @@ pub fn box_cox(data: &[f64], lambda: f64) -> Result<Vec<f64>, JsValue> {
 }
 
 /// Output of [`estimate_lambda`]: `{ lambda, at_bound }`.
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, tsify::Tsify)]
 struct LambdaEstimateDto {
     lambda: f64,
     at_bound: bool,
@@ -93,7 +93,7 @@ struct LambdaEstimateDto {
 /// Returns a `JsValue` error string if data contains non-positive values,
 /// has fewer than 2 elements, or the range is not finite with
 /// `lambda_min < lambda_max`.
-#[wasm_bindgen]
+#[wasm_bindgen(unchecked_return_type = "LambdaEstimateDto")]
 pub fn estimate_lambda(data: &[f64], lambda_min: f64, lambda_max: f64) -> Result<JsValue, JsValue> {
     let est = crate::transforms::estimate_lambda(data, lambda_min, lambda_max)
         .map_err(|e| JsValue::from_str(&e.to_string()))?;

@@ -104,6 +104,23 @@ Exported functions: `mean`, `std_dev`, `variance`, `normal_cdf`, `normal_sf` (up
 `rfft(data) -> Float64Array` — the DFT of a real sequence of any length, interleaved as
 `[re0, im0, re1, im1, …]` (bins `k` and `n − k` are conjugates, so `0..=n/2` describes the spectrum).
 
+### TypeScript
+
+Every exported function declares its return type, and the declarations are
+generated from the same structs the binding serialises, so they cannot drift
+from what it actually returns:
+
+```ts
+export function estimate_lambda(data: any): LambdaEstimateDto;
+```
+
+An absent optional value is declared `T | undefined`, which is what the binding
+sends. Nothing needs an `as` cast -- and a wrong assumption about a result's
+shape is a compile error rather than something that fails at run time.
+
+Inputs are still `any`: they are validated at the boundary, and a rejected one
+says what was wrong.
+
 ## Related
 
 - [u-metaheur](https://github.com/iyulab/u-metaheur) — Metaheuristic optimization (GA, SA, ALNS, CP)
