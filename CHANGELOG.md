@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Maintained from 0.2.1 onward; earlier entries list release dates only (see git history).
 
+## [Unreleased]
+
+### Added
+
+- `special::chi_squared_quantile(p, k)` -- the inverse of `chi_squared_cdf`, by
+  bisection on the incomplete gamma function. The library had the t and F
+  quantiles but not this one, so a chi-squared critical value had to be
+  approximated by the caller; the Wilson-Hilferty cube-root approximation is
+  off by 2-3 % in the tails at one or two degrees of freedom.
+- `special::noncentral_t_cdf(t, df, delta)` -- the noncentral t CDF (Lenth
+  1989, AS 243). It is the distribution a t statistic follows when the
+  hypothesis is false, so it is what the power of a t test, or of an effect
+  test in a two-level factorial, is computed from.
+- WASM: `inverse_normal_cdf`, `t_distribution_cdf`, `t_distribution_quantile`,
+  `f_distribution_cdf`, `f_distribution_quantile`, `chi_squared_cdf`,
+  `chi_squared_quantile`. The crate already computed these; a TypeScript
+  consumer that needed a critical value had to re-implement the inverse. They
+  throw, naming the argument, for a `p` outside (0, 1) or a non-positive
+  degrees of freedom -- the crate functions return `NaN` there, which across
+  the JS boundary draws nothing and raises nothing.
+
 ## [0.6.2] - 2026-09-20
 
 ### Added

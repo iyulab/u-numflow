@@ -121,6 +121,19 @@ jobs:
           const bc = m.box_cox([1, Math.E], 0)
           ok(Math.abs(bc[0]) < 1e-12 && Math.abs(bc[1] - 1) < 1e-9, `box_cox lambda=0 gave ${bc}`)
 
+          // Critical values against the NIST/SEMATECH tables, including df = 1,
+          // where a Newton step from the normal quantile has the farthest to go.
+          for (const [p, df, want] of [[0.975, 1, 12.7062], [0.975, 10, 2.2281], [0.95, 8, 1.8595]]) {
+            const t = m.t_distribution_quantile(p, df)
+            ok(Math.abs(t - want) < 5e-4, `t_distribution_quantile(${p}, ${df})=${t}, want ${want}`)
+          }
+          const c2 = m.chi_squared_quantile(0.975, 2)
+          ok(Math.abs(c2 - 7.3778) < 1e-3, `chi_squared_quantile(0.975, 2)=${c2}`)
+          // An argument outside the domain throws instead of returning NaN.
+          let threw = false
+          try { m.t_distribution_quantile(1, 5) } catch { threw = true }
+          ok(threw, 't_distribution_quantile(1, 5) did not throw')
+
           console.log('binding behaviour gate: ok')
           EOF
           PKG_NAME="$PKG_NAME" node gate.mjs

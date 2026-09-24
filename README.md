@@ -17,7 +17,7 @@ u-numflow provides foundational mathematical, statistical, and probabilistic bui
 |--------|-------------|
 | `stats` | Descriptive statistics (mean, variance, skewness, kurtosis) with Welford's online algorithm and Neumaier summation |
 | `distributions` | Probability distributions: Uniform, Triangular, PERT, Normal, LogNormal |
-| `special` | Special functions: normal CDF and tail-precise survival function (and their inverses), t/F/chi² CDF, regularized incomplete beta/gamma, erf |
+| `special` | Special functions: normal CDF and tail-precise survival function (and their inverses), t/F/chi² CDF and quantiles, the noncentral t CDF (Lenth AS 243 — the distribution power is computed from), regularized incomplete beta/gamma, erf |
 | `transforms` | Data transformations: Box-Cox (λ via MLE golden-section search), inverse Box-Cox |
 | `fourier` | Discrete Fourier transform of any length (radix-2 for powers of two, Bluestein otherwise): `fft`, `ifft`, `rfft`, `Complex` |
 | `matrix` | Dense matrix operations: determinant, inverse, Cholesky decomposition, Jacobi eigenvalue decomposition |
@@ -103,6 +103,25 @@ The package resolves per environment via a conditional `exports` map:
 Exported functions: `mean`, `std_dev`, `variance`, `normal_cdf`, `normal_sf` (upper tail `P(Z > x)`, computed directly so tail probabilities keep ~15 significant digits), `box_cox`, `estimate_lambda` (returns `{ lambda, at_bound }` — `at_bound` is `true` when the likelihood was still rising at an end of the search range, so `lambda` is that limit), and
 `rfft(data) -> Float64Array` — the DFT of a real sequence of any length, interleaved as
 `[re0, im0, re1, im1, …]` (bins `k` and `n − k` are conjugates, so `0..=n/2` describes the spectrum).
+
+Distribution functions for critical values and p-values — each returns a `number` and
+**throws** (a message naming the argument) when an argument is outside the domain,
+rather than returning `NaN`:
+
+| Function | Returns |
+|---|---|
+| `inverse_normal_cdf(p)` | `z` with `P(Z ≤ z) = p` |
+| `t_distribution_cdf(t, df)` / `t_distribution_quantile(p, df)` | Student's t; a two-sided critical value at level α is `t_distribution_quantile(1 − α/2, df)` |
+| `f_distribution_cdf(x, df1, df2)` / `f_distribution_quantile(p, df1, df2)` | F |
+| `chi_squared_cdf(x, k)` / `chi_squared_quantile(p, k)` | χ² |
+
+`p` must lie strictly between 0 and 1 and every degrees-of-freedom argument must be a
+finite number `> 0` (fractional values are allowed).
+
+```js
+const { t_distribution_quantile } = require("@iyulab/u-numflow");
+t_distribution_quantile(0.975, 10); // 2.2281…
+```
 
 ### TypeScript
 

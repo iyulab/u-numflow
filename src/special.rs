@@ -898,6 +898,147 @@ pub fn chi_squared_cdf(x: f64, k: f64) -> f64 {
     regularized_lower_gamma(k / 2.0, x / 2.0)
 }
 
+/// Quantile function (inverse CDF) of the chi-squared distribution.
+///
+/// Given a probability `p ∈ (0, 1)`, returns `x` such that `P(X ≤ x) = p`
+/// for `X ~ χ²(k)`.
+///
+/// # Algorithm
+/// Bisection on [`chi_squared_cdf`], bracketed by doubling from `max(k, 1)`.
+/// Exact to the tolerance of the incomplete gamma function, unlike the
+/// Wilson–Hilferty cube-root approximation, which is off by about 2–3 % for
+/// one or two degrees of freedom in the tails.
+///
+/// # Returns
+/// - `f64::NAN` if `p` is outside `(0, 1)`, `k ≤ 0`, or inputs are NaN.
+///
+/// # Examples
+/// ```
+/// use u_numflow::special::chi_squared_quantile;
+/// // NIST/SEMATECH table: χ²(0.95; 1) = 3.841, χ²(0.975; 2) = 7.378
+/// assert!((chi_squared_quantile(0.95, 1.0) - 3.8415).abs() < 1e-3);
+/// assert!((chi_squared_quantile(0.975, 2.0) - 7.3778).abs() < 1e-3);
+/// ```
+pub fn chi_squared_quantile(p: f64, k: f64) -> f64 {
+    if p.is_nan() || k.is_nan() || k <= 0.0 || p <= 0.0 || p >= 1.0 {
+        return f64::NAN;
+    }
+
+    let mut hi = k.max(1.0);
+    while chi_squared_cdf(hi, k) < p {
+        hi *= 2.0;
+        if hi > 1e15 {
+            return hi;
+        }
+    }
+    let mut lo = 0.0f64;
+
+    for _ in 0..200 {
+        let mid = (lo + hi) / 2.0;
+        if hi - lo < 1e-13 * mid.max(1e-300) {
+            break;
+        }
+        if chi_squared_cdf(mid, k) < p {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+    (lo + hi) / 2.0
+}
+
+// ============================================================================
+// Noncentral t-Distribution
+// ============================================================================
+
+/// CDF of the noncentral t-distribution: `P(T ≤ t)` for `T ~ t(df, δ)`.
+///
+/// `T = (Z + δ) / √(V/df)` with `Z ~ N(0, 1)` and `V ~ χ²(df)` independent.
+/// With `δ = 0` it is Student's t ([`t_distribution_cdf`]).
+///
+/// This is the distribution a t statistic follows when the null hypothesis
+/// is false, so it is what the power of a t test (and of an effect test in a
+/// two-level factorial) is computed from: a two-sided test at critical value
+/// `c` has power `1 − F(c; df, δ) + F(−c; df, δ)`.
+///
+/// # Algorithm
+/// Lenth (1989), *Algorithm AS 243: Cumulative distribution function of the
+/// non-central t distribution*, Applied Statistics 38(1), 185–189 — the
+/// Poisson-weighted series of incomplete beta functions, summed until its
+/// error bound falls below `1e-12`.
+///
+/// # Accuracy
+/// The series weights start at `exp(−δ²/2)`, which underflows for
+/// `|δ| ≳ 37`; there the result is not reliable. Power calculations stay far
+/// below that range.
+///
+/// # Returns
+/// - `f64::NAN` if `df ≤ 0` or any input is not finite.
+///
+/// # Examples
+/// ```
+/// use u_numflow::special::{noncentral_t_cdf, t_distribution_cdf};
+/// // δ = 0 is the central t
+/// let c = noncentral_t_cdf(2.228, 10.0, 0.0);
+/// assert!((c - t_distribution_cdf(2.228, 10.0)).abs() < 1e-10);
+/// // t = 0: P(T ≤ 0) = Φ(−δ)
+/// assert!((noncentral_t_cdf(0.0, 4.0, 1.0) - 0.158_655_253_9).abs() < 1e-9);
+/// ```
+pub fn noncentral_t_cdf(t: f64, df: f64, delta: f64) -> f64 {
+    if !t.is_finite() || !df.is_finite() || !delta.is_finite() || df <= 0.0 {
+        return f64::NAN;
+    }
+    const ERRMAX: f64 = 1e-12;
+    const ITRMAX: usize = 1000;
+
+    // F(t; df, δ) = 1 − F(−t; df, −δ): evaluate for t ≥ 0.
+    let (tt, del, negdel) = if t < 0.0 {
+        (-t, -delta, true)
+    } else {
+        (t, delta, false)
+    };
+
+    let mut tnc = 0.0;
+    let x = tt * tt / (tt * tt + df);
+    if x > 0.0 {
+        let lambda = del * del;
+        let mut p = 0.5 * (-0.5 * lambda).exp();
+        let mut q = (2.0 / std::f64::consts::PI).sqrt() * p * del;
+        let mut s = 0.5 - p;
+        let mut a = 0.5;
+        let b = 0.5 * df;
+        let rxb = (1.0 - x).powf(b);
+        let albeta = 0.5 * std::f64::consts::PI.ln() + ln_gamma(b) - ln_gamma(0.5 + b);
+        let mut xodd = regularized_incomplete_beta(x, a, b);
+        let mut godd = 2.0 * rxb * (a * x.ln() - albeta).exp();
+        let mut xeven = 1.0 - rxb;
+        let mut geven = b * x * rxb;
+        tnc = p * xodd + q * xeven;
+
+        let mut en = 1.0;
+        for _ in 0..ITRMAX {
+            a += 1.0;
+            xodd -= godd;
+            xeven -= geven;
+            godd *= x * (a + b - 1.0) / a;
+            geven *= x * (a + b - 0.5) / (a + 0.5);
+            p *= lambda / (2.0 * en);
+            q *= lambda / (2.0 * en + 1.0);
+            s -= p;
+            en += 1.0;
+            tnc += p * xodd + q * xeven;
+            let errbd = 2.0 * s * (xodd - godd);
+            if errbd.abs() <= ERRMAX {
+                break;
+            }
+        }
+    }
+    tnc += standard_normal_sf(del);
+
+    let out = if negdel { 1.0 - tnc } else { tnc };
+    out.clamp(0.0, 1.0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1456,6 +1597,139 @@ mod tests {
     fn test_chi2_cdf_nan() {
         assert!(chi_squared_cdf(1.0, -1.0).is_nan());
         assert!(chi_squared_cdf(f64::NAN, 5.0).is_nan());
+    }
+    // --- t quantile against published critical values ---
+
+    #[test]
+    fn test_t_quantile_nist_critical_values() {
+        // NIST/SEMATECH e-Handbook §1.3.6.7.2 (upper critical values).
+        let cases = [
+            (0.975, 1.0, 12.7062),
+            (0.975, 5.0, 2.5706),
+            (0.975, 10.0, 2.2281),
+            (0.975, 30.0, 2.0423),
+            (0.95, 8.0, 1.8595),
+            (0.995, 2.0, 9.9248),
+        ];
+        for (p, df, want) in cases {
+            let got = t_distribution_quantile(p, df);
+            assert!(
+                (got - want).abs() < 5e-4,
+                "t({p}; {df}) = {got}, want {want}"
+            );
+        }
+    }
+
+    // --- chi-squared quantile ---
+
+    #[test]
+    fn test_chi2_quantile_nist_critical_values() {
+        // NIST/SEMATECH e-Handbook §1.3.6.7.4 (upper critical values).
+        let cases = [
+            (0.95, 1.0, 3.841),
+            (0.975, 1.0, 5.024),
+            (0.975, 2.0, 7.378),
+            (0.999, 1.0, 10.828),
+            (0.999, 2.0, 13.816),
+            (0.999, 5.0, 20.515),
+            (0.975, 10.0, 20.483),
+            (0.05, 10.0, 3.940),
+        ];
+        for (p, k, want) in cases {
+            let got = chi_squared_quantile(p, k);
+            assert!(
+                (got - want).abs() < 1e-3,
+                "chi2({p}; {k}) = {got}, want {want}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_chi2_quantile_roundtrip() {
+        for &k in &[0.5, 1.0, 2.0, 3.0, 7.5, 30.0, 200.0] {
+            for &p in &[1e-6, 0.01, 0.3, 0.5, 0.9, 0.999, 1.0 - 1e-9] {
+                let x = chi_squared_quantile(p, k);
+                let back = chi_squared_cdf(x, k);
+                assert!(
+                    (back - p).abs() < 1e-10 * p.max(1e-3),
+                    "k={k} p={p}: x={x}, cdf={back}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_chi2_quantile_nan() {
+        assert!(chi_squared_quantile(0.0, 2.0).is_nan());
+        assert!(chi_squared_quantile(1.0, 2.0).is_nan());
+        assert!(chi_squared_quantile(0.5, 0.0).is_nan());
+        assert!(chi_squared_quantile(f64::NAN, 2.0).is_nan());
+    }
+
+    // --- noncentral t ---
+
+    /// Oracle: composite Simpson integration of `Φ(t·√(u/df) − δ)` over the
+    /// χ²(df) density (200 000 panels), computed independently of AS 243.
+    #[test]
+    fn test_noncentral_t_against_integration_oracle() {
+        let cases = [
+            (2.306, 8.0, 2.6667, 0.351_984_735_833_218),
+            (-2.306, 8.0, 2.6667, 6.505_998_809_435e-6),
+            (1.0, 10.0, 1.0, 0.490_240_051_395_437),
+            (2.0, 5.0, 1.5, 0.631_449_247_255_644),
+            (-1.0, 3.0, 0.5, 0.092_121_209_814_356),
+            (3.0, 20.0, 2.0, 0.807_947_708_148_032),
+            (0.0, 4.0, 1.0, 0.158_655_253_931_452),
+        ];
+        for (t, df, d, want) in cases {
+            let got = noncentral_t_cdf(t, df, d);
+            assert!(
+                (got - want).abs() < 1e-9,
+                "F({t}; {df}, {d}) = {got}, want {want}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_noncentral_t_zero_delta_is_central() {
+        for &df in &[1.0, 2.5, 8.0, 40.0] {
+            for &t in &[-4.0, -1.0, -0.2, 0.3, 1.7, 6.0] {
+                let a = noncentral_t_cdf(t, df, 0.0);
+                let b = t_distribution_cdf(t, df);
+                assert!((a - b).abs() < 1e-10, "df={df} t={t}: {a} vs {b}");
+            }
+        }
+    }
+
+    #[test]
+    fn test_noncentral_t_two_sided_power_of_a_2x3_replicated_factorial() {
+        // 2^3 with 2 replicates: N = 16, full model leaves df_E = 8.
+        // Effect 2.0, σ = 1.5 ⇒ δ = effect / (2σ/√N) = 2.667. Power ≈ 0.648.
+        let df = 8.0;
+        let delta = 2.0 / (2.0 * 1.5 / 16f64.sqrt());
+        let c = t_distribution_quantile(0.975, df);
+        let power = 1.0 - noncentral_t_cdf(c, df, delta) + noncentral_t_cdf(-c, df, delta);
+        assert!((power - 0.648_009_710_6).abs() < 1e-6, "power = {power}");
+    }
+
+    #[test]
+    fn test_noncentral_t_monotone_in_t_and_delta() {
+        let mut prev = 0.0;
+        for i in -40..=40 {
+            let t = i as f64 * 0.25;
+            let c = noncentral_t_cdf(t, 6.0, 1.3);
+            assert!(c >= prev - 1e-14, "not monotone in t at {t}");
+            prev = c;
+        }
+        // Larger δ shifts mass right: CDF at fixed t decreases.
+        assert!(noncentral_t_cdf(1.0, 6.0, 2.0) < noncentral_t_cdf(1.0, 6.0, 1.0));
+    }
+
+    #[test]
+    fn test_noncentral_t_invalid() {
+        assert!(noncentral_t_cdf(1.0, 0.0, 1.0).is_nan());
+        assert!(noncentral_t_cdf(f64::NAN, 5.0, 1.0).is_nan());
+        assert!(noncentral_t_cdf(1.0, 5.0, f64::INFINITY).is_nan());
     }
 }
 

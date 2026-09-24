@@ -12,6 +12,10 @@
 //! - `box_cox(data, lambda)` → `Result<Vec<f64>, JsValue>`
 //! - `estimate_lambda(data, lambda_min, lambda_max)` → `{ lambda, at_bound }` (or throws)
 //! - `rfft(data)` → `Vec<f64>` — DFT of a real sequence, interleaved `[re0, im0, re1, im1, …]`
+//! - `inverse_normal_cdf(p)` → `f64` — standard normal quantile (throws outside `(0, 1)`)
+//! - `t_distribution_cdf(t, df)` / `t_distribution_quantile(p, df)` → `f64` (throw on an invalid argument)
+//! - `f_distribution_cdf(x, df1, df2)` / `f_distribution_quantile(p, df1, df2)` → `f64` (same)
+//! - `chi_squared_cdf(x, k)` / `chi_squared_quantile(p, k)` → `f64` (same)
 
 #![cfg(feature = "wasm")]
 
@@ -115,4 +119,122 @@ pub fn rfft(data: &[f64]) -> Vec<f64> {
         .into_iter()
         .flat_map(|z| [z.re, z.im])
         .collect()
+}
+
+// ── Distribution CDFs and quantiles (critical values) ─────────────────────
+//
+// The crate functions return NaN for an argument outside their domain. Across
+// the JS boundary a NaN critical value draws nothing and raises nothing, so
+// these wrappers refuse such arguments instead and name the one that failed.
+
+fn check_probability(p: f64) -> Result<(), JsValue> {
+    if p.is_finite() && p > 0.0 && p < 1.0 {
+        Ok(())
+    } else {
+        Err(JsValue::from_str(&format!(
+            "p must be strictly between 0 and 1, got {p}"
+        )))
+    }
+}
+
+fn check_df(name: &str, df: f64) -> Result<(), JsValue> {
+    if df.is_finite() && df > 0.0 {
+        Ok(())
+    } else {
+        Err(JsValue::from_str(&format!(
+            "{name} must be a finite number > 0, got {df}"
+        )))
+    }
+}
+
+fn check_finite(name: &str, x: f64) -> Result<(), JsValue> {
+    if x.is_nan() {
+        Err(JsValue::from_str(&format!(
+            "{name} must be a number, got NaN"
+        )))
+    } else {
+        Ok(())
+    }
+}
+
+/// Standard normal quantile Φ⁻¹(p): the `z` with `P(Z ≤ z) = p`.
+///
+/// # Errors
+/// Throws if `p` is not strictly between 0 and 1.
+#[wasm_bindgen]
+pub fn inverse_normal_cdf(p: f64) -> Result<f64, JsValue> {
+    check_probability(p)?;
+    Ok(crate::special::inverse_normal_cdf(p))
+}
+
+/// Student's t CDF: `P(T ≤ t)` for `T ~ t(df)`. `df` may be fractional.
+///
+/// # Errors
+/// Throws if `t` is NaN or `df` is not a finite number > 0.
+#[wasm_bindgen]
+pub fn t_distribution_cdf(t: f64, df: f64) -> Result<f64, JsValue> {
+    check_finite("t", t)?;
+    check_df("df", df)?;
+    Ok(crate::special::t_distribution_cdf(t, df))
+}
+
+/// Student's t quantile: the `t` with `P(T ≤ t) = p`. A two-sided critical
+/// value at level α is `t_distribution_quantile(1 − α/2, df)`.
+///
+/// # Errors
+/// Throws if `p` is not strictly between 0 and 1, or `df` is not a finite
+/// number > 0.
+#[wasm_bindgen]
+pub fn t_distribution_quantile(p: f64, df: f64) -> Result<f64, JsValue> {
+    check_probability(p)?;
+    check_df("df", df)?;
+    Ok(crate::special::t_distribution_quantile(p, df))
+}
+
+/// F CDF: `P(X ≤ x)` for `X ~ F(df1, df2)` (`0` for `x ≤ 0`).
+///
+/// # Errors
+/// Throws if `x` is NaN, or `df1`/`df2` is not a finite number > 0.
+#[wasm_bindgen]
+pub fn f_distribution_cdf(x: f64, df1: f64, df2: f64) -> Result<f64, JsValue> {
+    check_finite("x", x)?;
+    check_df("df1", df1)?;
+    check_df("df2", df2)?;
+    Ok(crate::special::f_distribution_cdf(x, df1, df2))
+}
+
+/// F quantile: the `x` with `P(X ≤ x) = p` for `X ~ F(df1, df2)`.
+///
+/// # Errors
+/// Throws if `p` is not strictly between 0 and 1, or `df1`/`df2` is not a
+/// finite number > 0.
+#[wasm_bindgen]
+pub fn f_distribution_quantile(p: f64, df1: f64, df2: f64) -> Result<f64, JsValue> {
+    check_probability(p)?;
+    check_df("df1", df1)?;
+    check_df("df2", df2)?;
+    Ok(crate::special::f_distribution_quantile(p, df1, df2))
+}
+
+/// Chi-squared CDF: `P(X ≤ x)` for `X ~ χ²(k)` (`0` for `x ≤ 0`).
+///
+/// # Errors
+/// Throws if `x` is NaN or `k` is not a finite number > 0.
+#[wasm_bindgen]
+pub fn chi_squared_cdf(x: f64, k: f64) -> Result<f64, JsValue> {
+    check_finite("x", x)?;
+    check_df("k", k)?;
+    Ok(crate::special::chi_squared_cdf(x, k))
+}
+
+/// Chi-squared quantile: the `x` with `P(X ≤ x) = p` for `X ~ χ²(k)`.
+///
+/// # Errors
+/// Throws if `p` is not strictly between 0 and 1, or `k` is not a finite
+/// number > 0.
+#[wasm_bindgen]
+pub fn chi_squared_quantile(p: f64, k: f64) -> Result<f64, JsValue> {
+    check_probability(p)?;
+    check_df("k", k)?;
+    Ok(crate::special::chi_squared_quantile(p, k))
 }
