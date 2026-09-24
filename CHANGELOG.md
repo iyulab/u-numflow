@@ -19,6 +19,12 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
   1989, AS 243). It is the distribution a t statistic follows when the
   hypothesis is false, so it is what the power of a t test, or of an effect
   test in a two-level factorial, is computed from.
+- `distributions::Pert::quantile(p)` -- the exact PERT quantile, a Beta
+  quantile stretched over `[min, max]`. The only quantile was
+  `quantile_approx`, a normal approximation that is off for any skewed
+  estimate: for min 0, mode 1, max 10 it put the 5th percentile at -0.30
+  (below the minimum, then clamped to 0) where the exact value is 0.30.
+
 - WASM: `inverse_normal_cdf`, `t_distribution_cdf`, `t_distribution_quantile`,
   `f_distribution_cdf`, `f_distribution_quantile`, `chi_squared_cdf`,
   `chi_squared_quantile`. The crate already computed these; a TypeScript
@@ -26,6 +32,11 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
   throw, naming the argument, for a `p` outside (0, 1) or a non-positive
   degrees of freedom -- the crate functions return `NaN` there, which across
   the JS boundary draws nothing and raises nothing.
+
+### Deprecated
+
+- `Pert::quantile_approx` -- use `Pert::quantile`. It stays in this release so
+  the release is a patch, and is removed in the next minor version.
 
 ## [0.6.2] - 2026-09-20
 

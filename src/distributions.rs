@@ -561,19 +561,48 @@ impl Pert {
         special::regularized_incomplete_beta(t, self.alpha, self.beta)
     }
 
-    /// Approximate quantile using normal approximation.
+    /// Evaluates the quantile (inverse CDF) at probability `p ∈ [0, 1]`.
     ///
-    /// Uses `μ + σ·Φ⁻¹(p)` with the exact PERT mean and std dev.
-    /// This is an approximation; accuracy decreases for highly skewed PERTs.
+    /// A PERT is a Beta(α, β) stretched over `[min, max]`, so its quantile is
+    /// `min + (max − min)·B⁻¹(p; α, β)` -- exact to the tolerance of the Beta
+    /// quantile, and inside `[min, max]` by construction. (A normal
+    /// approximation `μ + σ·Φ⁻¹(p)` is off for any skewed estimate and can land
+    /// outside the support.)
+    ///
+    /// Returns `None` if `p` is outside `[0, 1]`.
+    ///
+    /// # Examples
+    /// ```
+    /// use u_numflow::distributions::Pert;
+    /// let pert = Pert::new(0.0, 1.0, 10.0).unwrap();
+    /// let q = pert.quantile(0.9).unwrap();
+    /// assert!((pert.cdf(q) - 0.9).abs() < 1e-9);
+    /// ```
+    pub fn quantile(&self, p: f64) -> Option<f64> {
+        if !(0.0..=1.0).contains(&p) {
+            return None;
+        }
+        let standard = BetaDistribution::new(self.alpha, self.beta)
+            .expect("PERT shape parameters are positive by construction")
+            .quantile(p)?;
+        Some(self.min + (self.max - self.min) * standard)
+    }
+
+    /// Normal approximation `μ + σ·Φ⁻¹(p)`, clamped to `[min, max]`.
+    ///
+    /// Superseded by the exact [`quantile`](Self::quantile), which this
+    /// differs from on any skewed estimate (it can even fall outside the
+    /// support before the clamp). Kept only so this release stays a patch; it
+    /// is removed in the next minor version.
     ///
     /// Returns `None` if `p` is outside `(0, 1)`.
+    #[deprecated(since = "0.6.3", note = "use `Pert::quantile`, which is exact")]
     pub fn quantile_approx(&self, p: f64) -> Option<f64> {
         if p <= 0.0 || p >= 1.0 {
             return None;
         }
         let z = special::inverse_normal_cdf(p);
         let result = self.mean() + z * self.std_dev();
-        // Clamp to [min, max]
         Some(result.clamp(self.min, self.max))
     }
 }
@@ -1387,10 +1416,37 @@ mod tests {
     }
 
     #[test]
-    fn test_pert_quantile_approx() {
+    fn test_pert_quantile_symmetric_median_is_the_mode() {
         let p = Pert::new(0.0, 5.0, 10.0).unwrap();
-        let q50 = p.quantile_approx(0.5).unwrap();
-        assert!((q50 - 5.0).abs() < 0.5, "median approx: {q50}");
+        assert!((p.quantile(0.5).unwrap() - 5.0).abs() < 1e-9);
+        assert_eq!(p.quantile(0.0), Some(0.0));
+        assert_eq!(p.quantile(1.0), Some(10.0));
+        assert_eq!(p.quantile(1.5), None);
+    }
+
+    /// The quantile inverts the CDF on a strongly skewed estimate, where the
+    /// normal approximation this replaced was off: at p = 0.05 it gave −0.30
+    /// (below the minimum, then clamped to 0) where the exact value is 0.300,
+    /// and at p = 0.95 it gave 4.96 where the exact value is 5.42.
+    #[test]
+    fn test_pert_quantile_inverts_the_cdf_when_skewed() {
+        let p = Pert::new(0.0, 1.0, 10.0).unwrap();
+        for &q in &[1e-6, 0.01, 0.05, 0.25, 0.5, 0.75, 0.95, 0.99] {
+            let x = p.quantile(q).unwrap();
+            assert!((0.0..=10.0).contains(&x));
+            assert!(
+                (p.cdf(x) - q).abs() < 1e-9,
+                "p={q}: x={x}, cdf={}",
+                p.cdf(x)
+            );
+        }
+        let normal_approx_at_5 = p.mean() + special::inverse_normal_cdf(0.05) * p.std_dev();
+        assert!((p.quantile(0.05).unwrap() - 0.300).abs() < 1e-3);
+        assert!((p.quantile(0.95).unwrap() - 5.4207).abs() < 1e-3);
+        assert!(
+            normal_approx_at_5 < 0.0,
+            "the approximation leaves the support"
+        );
     }
 
     #[test]
