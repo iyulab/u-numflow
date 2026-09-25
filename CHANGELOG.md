@@ -8,6 +8,8 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ## [Unreleased]
 
+## [0.6.3] - 2026-09-25
+
 ### Added
 
 - `special::chi_squared_quantile(p, k)` -- the inverse of `chi_squared_cdf`, by
