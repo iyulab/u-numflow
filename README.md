@@ -125,20 +125,22 @@ t_distribution_quantile(0.975, 10); // 2.2281…
 
 ### TypeScript
 
-Every exported function declares its return type, and the declarations are
-generated from the same structs the binding serialises, so they cannot drift
-from what it actually returns:
+Every exported function declares its parameter and return types, and the
+declarations are generated from the same structs the binding reads and
+serialises, so they cannot drift from what it actually accepts and returns:
 
 ```ts
-export function estimate_lambda(data: any): LambdaEstimateDto;
+export function estimate_lambda(data: Float64Array, lambda_min: number, lambda_max: number): LambdaEstimateDto;
 ```
 
 An absent optional value is declared `T | undefined`, which is what the binding
 sends. Nothing needs an `as` cast -- and a wrong assumption about a result's
 shape is a compile error rather than something that fails at run time.
 
-Inputs are still `any`: they are validated at the boundary, and a rejected one
-says what was wrong.
+Every parameter is a number or a `Float64Array`, so there is nothing to
+declare beyond what wasm-bindgen already does; the publishing workflow keeps it
+that way. The binding still validates every input at the boundary, and a
+rejected one says what was wrong.
 
 ## Related
 

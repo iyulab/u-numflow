@@ -8,6 +8,12 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ## [Unreleased]
 
+### Changed
+
+- The publishing workflow now also fails if an exported function takes a
+  parameter typed `any` (`check-typed-dts.sh --params`). None does; the README
+  said inputs were still `any`, which has not been true of this binding.
+
 ## [0.6.3] - 2026-09-25
 
 ### Added
