@@ -17,9 +17,95 @@
 //! - `f_distribution_cdf(x, df1, df2)` / `f_distribution_quantile(p, df1, df2)` → `f64` (same)
 //! - `chi_squared_cdf(x, k)` / `chi_squared_quantile(p, k)` → `f64` (same)
 
+//!
+//! Every refusal throws an `Error` whose `message` is readable text and which
+//! carries `code` -- a stable reason -- and the values behind it (`parameter`,
+//! `min`, `max`, `got`). See the README's *Errors*.
+
 #![cfg(feature = "wasm")]
 
 use wasm_bindgen::prelude::*;
+
+use crate::transforms::TransformError;
+
+// ── Refusals ──────────────────────────────────────────────────────────────
+
+/// A value carried on a refusal.
+#[derive(Debug, Clone, PartialEq)]
+enum Field {
+    Num(f64),
+    Str(&'static str),
+    Null,
+}
+
+/// A refusal on its way to JavaScript: the text for `Error.message`, a stable
+/// `code`, and the values behind it.
+#[derive(Debug, Clone, PartialEq)]
+struct Refusal {
+    code: &'static str,
+    message: String,
+    fields: Vec<(&'static str, Field)>,
+}
+
+impl Refusal {
+    /// An argument outside the range the function accepts; `max` is `None`
+    /// when the range is open above.
+    fn out_of_range(
+        parameter: &'static str,
+        min: f64,
+        max: Option<f64>,
+        got: f64,
+        message: String,
+    ) -> Self {
+        Refusal {
+            code: "parameter_out_of_range",
+            message,
+            fields: vec![
+                ("parameter", Field::Str(parameter)),
+                ("min", Field::Num(min)),
+                ("max", max.map_or(Field::Null, Field::Num)),
+                ("got", Field::Num(got)),
+            ],
+        }
+    }
+}
+
+impl From<TransformError> for Refusal {
+    fn from(e: TransformError) -> Self {
+        let code = match e {
+            TransformError::NonPositiveData => "non_positive_data",
+            TransformError::NonFiniteData => "value_not_finite",
+            TransformError::InsufficientData => "insufficient_data",
+            TransformError::InvalidTransform => "invalid_transform",
+            TransformError::InvalidInverse => "invalid_inverse",
+            TransformError::InvalidLambdaRange => "invalid_lambda_range",
+        };
+        Refusal {
+            code,
+            message: e.to_string(),
+            fields: Vec::new(),
+        }
+    }
+}
+
+/// Every refusal crosses into JavaScript as an `Error` whose `message` is the
+/// readable text, with `code` and the fields set on it as properties.
+impl From<Refusal> for JsValue {
+    fn from(refusal: Refusal) -> JsValue {
+        let err = js_sys::Error::new(&refusal.message);
+        // `Reflect::set` on a freshly created ordinary object cannot fail.
+        let _ = js_sys::Reflect::set(&err, &"code".into(), &refusal.code.into());
+        for (key, value) in refusal.fields {
+            let value = match value {
+                Field::Num(n) => JsValue::from_f64(n),
+                Field::Str(s) => s.into(),
+                Field::Null => JsValue::NULL,
+            };
+            let _ = js_sys::Reflect::set(&err, &key.into(), &value);
+        }
+        err.into()
+    }
+}
 
 /// Arithmetic mean of `data` using Kahan compensated summation.
 ///
@@ -71,11 +157,12 @@ pub fn normal_sf(x: f64) -> f64 {
 /// All values in `data` must be strictly positive.
 ///
 /// # Errors
-/// Returns a `JsValue` error string if data contains non-positive values or
-/// has fewer than 2 elements.
+/// Throws `non_positive_data`, `value_not_finite` or `insufficient_data` when
+/// data contains a value ≤ 0, a NaN or infinity, or fewer than 2 elements, and
+/// `invalid_transform` when a result is not finite.
 #[wasm_bindgen]
 pub fn box_cox(data: &[f64], lambda: f64) -> Result<Vec<f64>, JsValue> {
-    crate::transforms::box_cox(data, lambda).map_err(|e| JsValue::from_str(&e.to_string()))
+    crate::transforms::box_cox(data, lambda).map_err(|e| Refusal::from(e).into())
 }
 
 /// Output of [`estimate_lambda`]: `{ lambda, at_bound }`.
@@ -94,18 +181,24 @@ struct LambdaEstimateDto {
 /// interior estimate; widen the range to find the unconstrained optimum.
 ///
 /// # Errors
-/// Returns a `JsValue` error string if data contains non-positive values,
-/// has fewer than 2 elements, or the range is not finite with
-/// `lambda_min < lambda_max`.
+/// Throws as [`box_cox`] does for the data, and `invalid_lambda_range` when the
+/// range is not finite with `lambda_min < lambda_max`.
 #[wasm_bindgen(unchecked_return_type = "LambdaEstimateDto")]
 pub fn estimate_lambda(data: &[f64], lambda_min: f64, lambda_max: f64) -> Result<JsValue, JsValue> {
-    let est = crate::transforms::estimate_lambda(data, lambda_min, lambda_max)
-        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+    let est =
+        crate::transforms::estimate_lambda(data, lambda_min, lambda_max).map_err(Refusal::from)?;
     serde_wasm_bindgen::to_value(&LambdaEstimateDto {
         lambda: est.lambda,
         at_bound: est.at_bound,
     })
-    .map_err(|e| JsValue::from_str(&e.to_string()))
+    .map_err(|e| {
+        Refusal {
+            code: "malformed_input",
+            message: e.to_string(),
+            fields: vec![("parameter", Field::Str("result"))],
+        }
+        .into()
+    })
 }
 
 /// Forward DFT of a real sequence of any length.
@@ -127,31 +220,44 @@ pub fn rfft(data: &[f64]) -> Vec<f64> {
 // the JS boundary a NaN critical value draws nothing and raises nothing, so
 // these wrappers refuse such arguments instead and name the one that failed.
 
-fn check_probability(p: f64) -> Result<(), JsValue> {
+/// `p` strictly inside `(0, 1)`: `parameter_out_of_range` with `min` 0 and
+/// `max` 1 -- both excluded, as the message says.
+fn check_probability(p: f64) -> Result<(), Refusal> {
     if p.is_finite() && p > 0.0 && p < 1.0 {
         Ok(())
     } else {
-        Err(JsValue::from_str(&format!(
-            "p must be strictly between 0 and 1, got {p}"
-        )))
+        Err(Refusal::out_of_range(
+            "p",
+            0.0,
+            Some(1.0),
+            p,
+            format!("p must be strictly between 0 and 1, got {p}"),
+        ))
     }
 }
 
-fn check_df(name: &str, df: f64) -> Result<(), JsValue> {
+/// Degrees of freedom: a finite number above 0 (`min` 0, excluded).
+fn check_df(name: &'static str, df: f64) -> Result<(), Refusal> {
     if df.is_finite() && df > 0.0 {
         Ok(())
     } else {
-        Err(JsValue::from_str(&format!(
-            "{name} must be a finite number > 0, got {df}"
-        )))
+        Err(Refusal::out_of_range(
+            name,
+            0.0,
+            None,
+            df,
+            format!("{name} must be a finite number > 0, got {df}"),
+        ))
     }
 }
 
-fn check_finite(name: &str, x: f64) -> Result<(), JsValue> {
+fn check_finite(name: &'static str, x: f64) -> Result<(), Refusal> {
     if x.is_nan() {
-        Err(JsValue::from_str(&format!(
-            "{name} must be a number, got NaN"
-        )))
+        Err(Refusal {
+            code: "value_not_finite",
+            message: format!("{name} must be a number, got NaN"),
+            fields: vec![("parameter", Field::Str(name))],
+        })
     } else {
         Ok(())
     }
@@ -237,4 +343,48 @@ pub fn chi_squared_quantile(p: f64, k: f64) -> Result<f64, JsValue> {
     check_probability(p)?;
     check_df("k", k)?;
     Ok(crate::special::chi_squared_quantile(p, k))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_probability_outside_0_1_names_the_range() {
+        let r = check_probability(1.5).expect_err("outside");
+        assert_eq!(r.code, "parameter_out_of_range");
+        assert_eq!(
+            r.fields,
+            vec![
+                ("parameter", Field::Str("p")),
+                ("min", Field::Num(0.0)),
+                ("max", Field::Num(1.0)),
+                ("got", Field::Num(1.5)),
+            ]
+        );
+        assert!(check_probability(0.5).is_ok());
+    }
+
+    #[test]
+    fn degrees_of_freedom_are_open_above() {
+        let r = check_df("df2", 0.0).expect_err("zero");
+        assert_eq!(r.fields[0], ("parameter", Field::Str("df2")));
+        assert_eq!(r.fields[2], ("max", Field::Null));
+    }
+
+    #[test]
+    fn nan_is_refused_as_not_finite() {
+        assert_eq!(
+            check_finite("x", f64::NAN).expect_err("NaN").code,
+            "value_not_finite"
+        );
+        assert!(check_finite("x", f64::INFINITY).is_ok());
+    }
+
+    #[test]
+    fn transform_errors_keep_their_reason() {
+        let r = Refusal::from(TransformError::NonPositiveData);
+        assert_eq!(r.code, "non_positive_data");
+        assert_eq!(r.message, TransformError::NonPositiveData.to_string());
+    }
 }

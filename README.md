@@ -113,7 +113,7 @@ Exported functions: `mean`, `std_dev`, `variance`, `normal_cdf`, `normal_sf` (up
 `[re0, im0, re1, im1, …]` (bins `k` and `n − k` are conjugates, so `0..=n/2` describes the spectrum).
 
 Distribution functions for critical values and p-values — each returns a `number` and
-**throws** (a message naming the argument) when an argument is outside the domain,
+**throws** (an `Error` naming the argument — see *Errors* below) when an argument is outside the domain,
 rather than returning `NaN`:
 
 | Function | Returns |
@@ -130,6 +130,27 @@ finite number `> 0` (fractional values are allowed).
 const { t_distribution_quantile } = require("@iyulab/u-numflow");
 t_distribution_quantile(0.975, 10); // 2.2281…
 ```
+
+**Errors.** A refusal throws an `Error` whose `message` is readable text and which
+carries a `code` naming the reason, next to the values behind it:
+
+```js
+const { t_distribution_quantile } = require("@iyulab/u-numflow");
+try {
+  t_distribution_quantile(1.5, 10);
+} catch (err) {
+  console.log(err.code, err.parameter, err.min, err.max, err.got); // parameter_out_of_range p 0 1 1.5
+}
+```
+
+| `code` | Fields | Meaning |
+|---|---|---|
+| `parameter_out_of_range` | `parameter`, `min`, `max` (or `null`), `got` | `p` not strictly inside (0, 1), or a degrees of freedom that is not a finite number `> 0` (both bounds excluded) |
+| `value_not_finite` | `parameter` (for a scalar argument) | A NaN argument, or a NaN or infinity in `box_cox`/`estimate_lambda` data |
+| `non_positive_data` | — | Box-Cox data with a value `≤ 0` |
+| `insufficient_data` | — | Box-Cox data with fewer than 2 values |
+| `invalid_transform` | — | A Box-Cox result that is not finite |
+| `invalid_lambda_range` | — | `estimate_lambda` bounds that are not finite with `lambda_min < lambda_max` |
 
 ### TypeScript
 

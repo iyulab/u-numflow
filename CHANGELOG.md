@@ -10,9 +10,23 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ### Changed
 
+- **Breaking:** the WebAssembly functions throw an `Error` carrying a stable
+  `code` and the values behind it instead of a bare string: a `p` outside
+  (0, 1) or a non-positive degrees of freedom is `parameter_out_of_range` with
+  `parameter`, `min`, `max` (or `null`), `got`; a NaN argument is
+  `value_not_finite`; the Box-Cox refusals are `non_positive_data`,
+  `value_not_finite`, `insufficient_data`, `invalid_transform` and
+  `invalid_lambda_range`. `err.message` reads as before, but `String(err)` now
+  starts with `Error: `.
+
 - The README says a browser without a bundler is not supported (the package
   loads its `.wasm` through an ES module import, which browsers refuse), instead
   of listing only the environments that work.
+
+### Removed
+
+- **Breaking:** `Pert::quantile_approx`, deprecated in 0.6.3 — use
+  `Pert::quantile`, which is exact.
 
 ## [0.6.4] - 2026-09-30
 

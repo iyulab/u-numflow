@@ -587,24 +587,6 @@ impl Pert {
             .quantile(p)?;
         Some(self.min + (self.max - self.min) * standard)
     }
-
-    /// Normal approximation `μ + σ·Φ⁻¹(p)`, clamped to `[min, max]`.
-    ///
-    /// Superseded by the exact [`quantile`](Self::quantile), which this
-    /// differs from on any skewed estimate (it can even fall outside the
-    /// support before the clamp). Kept only so this release stays a patch; it
-    /// is removed in the next minor version.
-    ///
-    /// Returns `None` if `p` is outside `(0, 1)`.
-    #[deprecated(since = "0.6.3", note = "use `Pert::quantile`, which is exact")]
-    pub fn quantile_approx(&self, p: f64) -> Option<f64> {
-        if p <= 0.0 || p >= 1.0 {
-            return None;
-        }
-        let z = special::inverse_normal_cdf(p);
-        let result = self.mean() + z * self.std_dev();
-        Some(result.clamp(self.min, self.max))
-    }
 }
 
 // ============================================================================
