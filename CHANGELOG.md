@@ -13,6 +13,9 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 - The publishing workflow now also fails if an exported function takes a
   parameter typed `any` (`check-typed-dts.sh`). None does; the README
   said inputs were still `any`, which has not been true of this binding.
+- The publishing workflow runs the README's JavaScript examples against the
+  built package before it publishes, so an example that throws is caught
+  before a reader copies it.
 
 ## [0.6.3] - 2026-09-25
 
