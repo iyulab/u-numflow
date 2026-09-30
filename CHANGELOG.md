@@ -17,6 +17,15 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
   built package before it publishes, so an example that throws is caught
   before a reader copies it.
 
+### Fixed
+
+- The README's Rust example did not compile: it used an `OnlineStats` type, a
+  `PertDistribution` with a `sample` method and an `Rng::seed_from_u64` that
+  the crate does not have. It now uses `WelfordAccumulator`, `Pert` and
+  `random::create_rng`.
+  The README's Rust examples are now compiled and run with the doc-tests,
+  so an example that stops matching the API fails CI.
+
 ## [0.6.3] - 2026-09-25
 
 ### Added

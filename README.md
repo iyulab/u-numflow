@@ -38,31 +38,34 @@ u-numflow = "0.2"
 ```
 
 ```rust
-use u_numflow::stats::OnlineStats;
-use u_numflow::distributions::{PertDistribution, Distribution};
-use u_numflow::random::Rng;
+use u_numflow::distributions::Pert;
+use u_numflow::random::{create_rng, shuffle};
+use u_numflow::stats::WelfordAccumulator;
 
-// Online statistics with numerical stability
-let mut stats = OnlineStats::new();
+// Online statistics with numerical stability (Welford)
+let mut stats = WelfordAccumulator::new();
 for x in [1.0, 2.0, 3.0, 4.0, 5.0] {
-    stats.push(x);
+    stats.update(x);
 }
-assert_eq!(stats.mean(), 3.0);
+assert_eq!(stats.mean(), Some(3.0));
 
-// PERT distribution sampling
-let pert = PertDistribution::new(1.0, 4.0, 7.0);
-let mut rng = Rng::seed_from_u64(42);
-let sample = pert.sample(&mut rng);
+// PERT distribution: moments and quantiles; sample by inverting a uniform draw
+let pert = Pert::new(1.0, 4.0, 7.0).unwrap();
+assert_eq!(pert.mean(), 4.0);
+let p90 = pert.quantile(0.9).unwrap();
+assert!(p90 > 4.0 && p90 < 7.0);
 
 // Seeded shuffling for reproducibility
+let mut rng = create_rng(42);
 let mut items = vec![1, 2, 3, 4, 5];
-u_numflow::random::shuffle(&mut items, &mut rng);
+shuffle(&mut items, &mut rng);
 
 // Box-Cox transformation (non-normal data normalization)
-use u_numflow::transforms::{estimate_lambda, box_cox};
+use u_numflow::transforms::{box_cox, estimate_lambda};
 let data = [1.0, 2.0, 4.0, 8.0, 16.0];
-let lambda = estimate_lambda(&data, -2.0, 2.0).unwrap(); // MLE via golden-section
-let transformed = box_cox(&data, lambda).unwrap();
+let fit = estimate_lambda(&data, -2.0, 2.0).unwrap(); // MLE via golden-section
+let transformed = box_cox(&data, fit.lambda).unwrap();
+assert_eq!(transformed.len(), data.len());
 
 // Discrete Fourier transform of any length
 use u_numflow::fourier::rfft;
