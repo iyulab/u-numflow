@@ -8,6 +8,8 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ## [Unreleased]
 
+## [0.6.4] - 2026-09-30
+
 ### Changed
 
 - The publishing workflow now also fails if an exported function takes a
