@@ -143,6 +143,14 @@ jobs:
           try { m.t_distribution_quantile(1, 5) } catch { threw = true }
           ok(threw, 't_distribution_quantile(1, 5) did not throw')
 
+          // A data array is read as sent: null is refused where it sits, not
+          // averaged as 0 by the glue's typed-array copy.
+          let refused = null
+          try { m.mean([1, null, 3]) } catch (err) { refused = err }
+          ok(refused && refused.code === 'malformed_input' && refused.index === 1,
+            `mean([1, null, 3]) gave ${refused ? refused.code + '@' + refused.index : 'no error'}`)
+          ok(m.mean(new Float64Array([1, 2, 3])) === 2, 'mean(Float64Array) changed')
+
           console.log('binding behaviour gate: ok')
           EOF
           PKG_NAME="$PKG_NAME" node gate.mjs

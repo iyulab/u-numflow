@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Maintained from 0.2.1 onward; earlier entries list release dates only (see git history).
 
+## [Unreleased]
+
+### Changed
+
+- **Breaking:** the WebAssembly functions that take a `data` array (`mean`,
+  `std_dev`, `variance`, `box_cox`, `estimate_lambda`, `rfft`) read it as sent.
+  Before, the generated glue copied a plain array into a typed array, so `null`
+  became `0` and a string `NaN` — `mean([1, null, 3])` returned `1.333…`. An
+  element that is not a number now throws `malformed_input` and a NaN or
+  ±Infinity `value_not_finite`, both with `parameter` and `index`. `data` is
+  declared `number[] | Float64Array`; anything else throws `malformed_input`.
+- **Breaking:** `mean`, `std_dev` and `variance` throw instead of returning
+  `NaN`: `mean` of no values is `empty_input`, `std_dev`/`variance` of fewer
+  than two values `insufficient_data` (with `min` and `got`).
+
 ## [0.7.0] - 2026-09-30
 
 ### Changed

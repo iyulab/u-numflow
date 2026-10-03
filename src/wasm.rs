@@ -4,9 +4,9 @@
 //! Only enabled when the `wasm` feature is active.
 //!
 //! # Exported functions
-//! - `mean(data)` → `f64` (NaN if empty/invalid)
-//! - `std_dev(data)` → `f64` (NaN if < 2 elements or invalid)
-//! - `variance(data)` → `f64` (NaN if < 2 elements or invalid)
+//! - `mean(data)` → `f64` (throws `empty_input` when `data` is empty)
+//! - `std_dev(data)` → `f64` (throws `insufficient_data` below 2 elements)
+//! - `variance(data)` → `f64` (throws `insufficient_data` below 2 elements)
 //! - `normal_cdf(x)` → `f64` — standard normal CDF Φ(x), i.e. N(0,1)
 //! - `normal_sf(x)` → `f64` — standard normal upper tail P(Z > x), tail-precise
 //! - `box_cox(data, lambda)` → `Result<Vec<f64>, JsValue>`
@@ -16,7 +16,12 @@
 //! - `t_distribution_cdf(t, df)` / `t_distribution_quantile(p, df)` → `f64` (throw on an invalid argument)
 //! - `f_distribution_cdf(x, df1, df2)` / `f_distribution_quantile(p, df1, df2)` → `f64` (same)
 //! - `chi_squared_cdf(x, k)` / `chi_squared_quantile(p, k)` → `f64` (same)
-
+//!
+//! Every `data` argument is a `number[]` or a `Float64Array`, read as sent: an
+//! element that is not a number (`null`, a string) is refused as
+//! `malformed_input` and a NaN or ±Infinity as `value_not_finite`, each with
+//! the element's `index`. (A `&[f64]` parameter would let wasm-bindgen copy the
+//! array into a typed array first, turning `null` into 0 and a string into NaN.)
 //!
 //! Every refusal throws an `Error` whose `message` is readable text and which
 //! carries `code` -- a stable reason -- and the values behind it (`parameter`,
@@ -70,6 +75,92 @@ impl Refusal {
     }
 }
 
+/// One element of a JS number array, as found.
+#[derive(Debug, Clone, PartialEq)]
+enum Element {
+    Number(f64),
+    /// Anything else, by its JS type name (`"null"`, `"string"`, …).
+    Other(String),
+}
+
+/// The values of a number array, refusing the first element that is not a
+/// finite number and naming where it sits.
+///
+/// Kept apart from the `JsValue` walk so it runs off `wasm32` in tests.
+fn numbers_from(
+    parameter: &'static str,
+    elements: impl IntoIterator<Item = Element>,
+) -> Result<Vec<f64>, Refusal> {
+    let mut out = Vec::new();
+    for (i, element) in elements.into_iter().enumerate() {
+        match element {
+            Element::Number(x) if x.is_finite() => out.push(x),
+            Element::Number(x) => {
+                return Err(Refusal {
+                    code: "value_not_finite",
+                    message: format!("{parameter}[{i}]: expected a finite number, got {x}"),
+                    fields: vec![
+                        ("parameter", Field::Str(parameter)),
+                        ("index", Field::Num(i as f64)),
+                    ],
+                })
+            }
+            Element::Other(kind) => {
+                return Err(Refusal {
+                    code: "malformed_input",
+                    message: format!("{parameter}[{i}]: expected a number, got {kind}"),
+                    fields: vec![
+                        ("parameter", Field::Str(parameter)),
+                        ("index", Field::Num(i as f64)),
+                    ],
+                })
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// Reads a `number[]` or `Float64Array` argument without converting it.
+fn read_numbers(value: &JsValue, parameter: &'static str) -> Result<Vec<f64>, Refusal> {
+    use wasm_bindgen::JsCast;
+    if let Some(typed) = value.dyn_ref::<js_sys::Float64Array>() {
+        return numbers_from(parameter, typed.to_vec().into_iter().map(Element::Number));
+    }
+    if !js_sys::Array::is_array(value) {
+        return Err(Refusal {
+            code: "malformed_input",
+            message: format!("{parameter}: expected an array of numbers or a Float64Array"),
+            fields: vec![("parameter", Field::Str(parameter))],
+        });
+    }
+    let array: &js_sys::Array = value.unchecked_ref();
+    numbers_from(
+        parameter,
+        array.iter().map(|item| match item.as_f64() {
+            Some(x) => Element::Number(x),
+            None if item.is_null() => Element::Other("null".to_string()),
+            None => Element::Other(item.js_typeof().as_string().unwrap_or_default()),
+        }),
+    )
+}
+
+/// `data` with at least `min` values, or `insufficient_data` saying so.
+fn at_least(data: Vec<f64>, min: usize) -> Result<Vec<f64>, Refusal> {
+    if data.len() >= min {
+        Ok(data)
+    } else {
+        Err(Refusal {
+            code: "insufficient_data",
+            message: format!("data: at least {min} values are needed, got {}", data.len()),
+            fields: vec![
+                ("parameter", Field::Str("data")),
+                ("min", Field::Num(min as f64)),
+                ("got", Field::Num(data.len() as f64)),
+            ],
+        })
+    }
+}
+
 impl From<TransformError> for Refusal {
     fn from(e: TransformError) -> Self {
         let code = match e {
@@ -109,26 +200,47 @@ impl From<Refusal> for JsValue {
 
 /// Arithmetic mean of `data` using Kahan compensated summation.
 ///
-/// Returns `NaN` if `data` is empty or contains non-finite values.
+/// # Errors
+/// Throws `empty_input` when `data` is empty, and as every `data` argument
+/// does for an element that is not a finite number.
 #[wasm_bindgen]
-pub fn mean(data: &[f64]) -> f64 {
-    crate::stats::mean(data).unwrap_or(f64::NAN)
+pub fn mean(
+    #[wasm_bindgen(unchecked_param_type = "number[] | Float64Array")] data: JsValue,
+) -> Result<f64, JsValue> {
+    let data = read_numbers(&data, "data")?;
+    if data.is_empty() {
+        return Err(Refusal {
+            code: "empty_input",
+            message: "data: the mean of no values is undefined".to_string(),
+            fields: vec![("parameter", Field::Str("data"))],
+        }
+        .into());
+    }
+    Ok(crate::stats::mean(&data).expect("non-empty finite data has a mean"))
 }
 
 /// Sample standard deviation of `data` (Bessel-corrected, denominator n−1).
 ///
-/// Returns `NaN` if `data` has fewer than 2 elements or contains non-finite values.
+/// # Errors
+/// Throws `insufficient_data` below 2 values.
 #[wasm_bindgen]
-pub fn std_dev(data: &[f64]) -> f64 {
-    crate::stats::std_dev(data).unwrap_or(f64::NAN)
+pub fn std_dev(
+    #[wasm_bindgen(unchecked_param_type = "number[] | Float64Array")] data: JsValue,
+) -> Result<f64, JsValue> {
+    let data = at_least(read_numbers(&data, "data")?, 2)?;
+    Ok(crate::stats::std_dev(&data).expect("two or more finite values have a std_dev"))
 }
 
 /// Sample variance of `data` (Bessel-corrected, denominator n−1).
 ///
-/// Returns `NaN` if `data` has fewer than 2 elements or contains non-finite values.
+/// # Errors
+/// Throws `insufficient_data` below 2 values.
 #[wasm_bindgen]
-pub fn variance(data: &[f64]) -> f64 {
-    crate::stats::variance(data).unwrap_or(f64::NAN)
+pub fn variance(
+    #[wasm_bindgen(unchecked_param_type = "number[] | Float64Array")] data: JsValue,
+) -> Result<f64, JsValue> {
+    let data = at_least(read_numbers(&data, "data")?, 2)?;
+    Ok(crate::stats::variance(&data).expect("two or more finite values have a variance"))
 }
 
 /// Standard normal CDF Φ(x) = P(Z ≤ x) for Z ~ N(0, 1).
@@ -161,8 +273,12 @@ pub fn normal_sf(x: f64) -> f64 {
 /// data contains a value ≤ 0, a NaN or infinity, or fewer than 2 elements, and
 /// `invalid_transform` when a result is not finite.
 #[wasm_bindgen]
-pub fn box_cox(data: &[f64], lambda: f64) -> Result<Vec<f64>, JsValue> {
-    crate::transforms::box_cox(data, lambda).map_err(|e| Refusal::from(e).into())
+pub fn box_cox(
+    #[wasm_bindgen(unchecked_param_type = "number[] | Float64Array")] data: JsValue,
+    lambda: f64,
+) -> Result<Vec<f64>, JsValue> {
+    let data = read_numbers(&data, "data")?;
+    crate::transforms::box_cox(&data, lambda).map_err(|e| Refusal::from(e).into())
 }
 
 /// Output of [`estimate_lambda`]: `{ lambda, at_bound }`.
@@ -184,9 +300,14 @@ struct LambdaEstimateDto {
 /// Throws as [`box_cox`] does for the data, and `invalid_lambda_range` when the
 /// range is not finite with `lambda_min < lambda_max`.
 #[wasm_bindgen(unchecked_return_type = "LambdaEstimateDto")]
-pub fn estimate_lambda(data: &[f64], lambda_min: f64, lambda_max: f64) -> Result<JsValue, JsValue> {
+pub fn estimate_lambda(
+    #[wasm_bindgen(unchecked_param_type = "number[] | Float64Array")] data: JsValue,
+    lambda_min: f64,
+    lambda_max: f64,
+) -> Result<JsValue, JsValue> {
+    let data = read_numbers(&data, "data")?;
     let est =
-        crate::transforms::estimate_lambda(data, lambda_min, lambda_max).map_err(Refusal::from)?;
+        crate::transforms::estimate_lambda(&data, lambda_min, lambda_max).map_err(Refusal::from)?;
     serde_wasm_bindgen::to_value(&LambdaEstimateDto {
         lambda: est.lambda,
         at_bound: est.at_bound,
@@ -206,12 +327,19 @@ pub fn estimate_lambda(data: &[f64], lambda_min: f64, lambda_max: f64) -> Result
 /// Returns the `n` complex bins interleaved as `[re0, im0, re1, im1, …]`
 /// (length `2n`). Bins `k` and `n − k` are conjugates, so the spectrum of a
 /// real signal is fully described by bins `0..=n/2`.
+///
+/// # Errors
+/// Throws as every `data` argument does for an element that is not a finite
+/// number.
 #[wasm_bindgen]
-pub fn rfft(data: &[f64]) -> Vec<f64> {
-    crate::fourier::rfft(data)
+pub fn rfft(
+    #[wasm_bindgen(unchecked_param_type = "number[] | Float64Array")] data: JsValue,
+) -> Result<Vec<f64>, JsValue> {
+    let data = read_numbers(&data, "data")?;
+    Ok(crate::fourier::rfft(&data)
         .into_iter()
         .flat_map(|z| [z.re, z.im])
-        .collect()
+        .collect())
 }
 
 // ── Distribution CDFs and quantiles (critical values) ─────────────────────
@@ -379,6 +507,51 @@ mod tests {
             "value_not_finite"
         );
         assert!(check_finite("x", f64::INFINITY).is_ok());
+    }
+
+    #[test]
+    fn a_number_array_is_read_as_sent() {
+        let ok = numbers_from("data", [1.0, -2.5].map(Element::Number)).expect("numbers");
+        assert_eq!(ok, vec![1.0, -2.5]);
+        assert!(numbers_from("data", []).expect("empty").is_empty());
+    }
+
+    #[test]
+    fn null_is_refused_where_it_sits_not_read_as_zero() {
+        let r = numbers_from(
+            "data",
+            [
+                Element::Number(1.0),
+                Element::Other("null".into()),
+                Element::Number(3.0),
+            ],
+        )
+        .expect_err("null");
+        assert_eq!(r.code, "malformed_input");
+        assert_eq!(
+            r.fields,
+            vec![
+                ("parameter", Field::Str("data")),
+                ("index", Field::Num(1.0))
+            ]
+        );
+        assert!(r.message.contains("got null"), "{}", r.message);
+    }
+
+    #[test]
+    fn a_non_finite_element_is_not_finite_with_its_index() {
+        let r = numbers_from("data", [0.0, f64::INFINITY].map(Element::Number)).expect_err("inf");
+        assert_eq!(r.code, "value_not_finite");
+        assert_eq!(r.fields[1], ("index", Field::Num(1.0)));
+    }
+
+    #[test]
+    fn too_few_values_say_how_many_are_needed() {
+        let r = at_least(vec![1.0], 2).expect_err("one");
+        assert_eq!(r.code, "insufficient_data");
+        assert_eq!(r.fields[1], ("min", Field::Num(2.0)));
+        assert_eq!(r.fields[2], ("got", Field::Num(1.0)));
+        assert!(at_least(vec![1.0, 2.0], 2).is_ok());
     }
 
     #[test]

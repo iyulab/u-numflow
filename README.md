@@ -112,6 +112,12 @@ Exported functions: `mean`, `std_dev`, `variance`, `normal_cdf`, `normal_sf` (up
 `rfft(data) -> Float64Array` — the DFT of a real sequence of any length, interleaved as
 `[re0, im0, re1, im1, …]` (bins `k` and `n − k` are conjugates, so `0..=n/2` describes the spectrum).
 
+Every `data` argument is a `number[]` or a `Float64Array`, read exactly as sent: an
+element that is not a number (`null`, `undefined`, a string) throws `malformed_input`
+and a NaN or ±Infinity throws `value_not_finite`, each with the element's `index` —
+`mean([1, null, 3])` throws rather than averaging the `null` as 0. `mean` of no values
+throws `empty_input`; `std_dev` and `variance` of fewer than 2 throw `insufficient_data`.
+
 Distribution functions for critical values and p-values — each returns a `number` and
 **throws** (an `Error` naming the argument — see *Errors* below) when an argument is outside the domain,
 rather than returning `NaN`:
@@ -146,9 +152,11 @@ try {
 | `code` | Fields | Meaning |
 |---|---|---|
 | `parameter_out_of_range` | `parameter`, `min`, `max` (or `null`), `got` | `p` not strictly inside (0, 1), or a degrees of freedom that is not a finite number `> 0` (both bounds excluded) |
-| `value_not_finite` | `parameter` (for a scalar argument) | A NaN argument, or a NaN or infinity in `box_cox`/`estimate_lambda` data |
+| `malformed_input` | `parameter`, `index` (or absent) | A `data` argument that is not an array or `Float64Array`, or an element that is not a number |
+| `value_not_finite` | `parameter`, `index` for an array element | A NaN argument, or a NaN or infinity in any `data` array |
+| `empty_input` | `parameter` | `mean` of no values |
 | `non_positive_data` | — | Box-Cox data with a value `≤ 0` |
-| `insufficient_data` | — | Box-Cox data with fewer than 2 values |
+| `insufficient_data` | `parameter`, `min`, `got` for `std_dev`/`variance`; — for Box-Cox | Fewer values than the function needs (`std_dev`/`variance` 2, Box-Cox 2) |
 | `invalid_transform` | — | A Box-Cox result that is not finite |
 | `invalid_lambda_range` | — | `estimate_lambda` bounds that are not finite with `lambda_min < lambda_max` |
 
@@ -159,17 +167,18 @@ declarations are generated from the same structs the binding reads and
 serialises, so they cannot drift from what it actually accepts and returns:
 
 ```ts
-export function estimate_lambda(data: Float64Array, lambda_min: number, lambda_max: number): LambdaEstimateDto;
+export function mean(data: number[] | Float64Array): number;
+export function estimate_lambda(data: number[] | Float64Array, lambda_min: number, lambda_max: number): LambdaEstimateDto;
 ```
 
 An absent optional value is declared `T | undefined`, which is what the binding
 sends. Nothing needs an `as` cast -- and a wrong assumption about a result's
 shape is a compile error rather than something that fails at run time.
 
-Every parameter is a number or a `Float64Array`, so there is nothing to
-declare beyond what wasm-bindgen already does; the publishing workflow keeps it
-that way. The binding still validates every input at the boundary, and a
-rejected one says what was wrong.
+A `data` parameter is declared `number[] | Float64Array` and read by the
+binding itself rather than copied into a typed array by the generated glue, so
+a value the declaration does not allow is refused where it sits instead of
+being converted. The publishing workflow keeps every declaration free of `any`.
 
 ## Related
 
