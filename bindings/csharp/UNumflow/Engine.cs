@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -61,7 +62,7 @@ internal static class Engine
             return x;
         var body = new JsonObject
         {
-            ["error"] = $"{parameter}: expected a finite number, got {x}",
+            ["error"] = $"{parameter}: expected a finite number, got {x.ToString(CultureInfo.InvariantCulture)}",
             ["code"] = "value_not_finite",
             ["parameter"] = parameter,
         };
