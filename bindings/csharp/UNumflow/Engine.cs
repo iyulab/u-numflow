@@ -77,7 +77,7 @@ internal static class Engine
         var i = 0;
         foreach (var (start, end) in intervals)
         {
-            rows.Add(new JsonArray(Finite($"{parameter}[{i}]", start, 0), Finite($"{parameter}[{i}]", end, 1)));
+            rows.Add((JsonNode)new JsonArray(Finite($"{parameter}[{i}]", start, 0), Finite($"{parameter}[{i}]", end, 1)));
             i++;
         }
         return rows;
