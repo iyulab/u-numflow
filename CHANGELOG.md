@@ -14,6 +14,11 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ### Changed
 
+- **Breaking:** `TransformError` is `#[non_exhaustive]` and its input variants carry
+  where the input went wrong: `NonPositiveData { index, value }` (the first value ≤ 0),
+  `NonFiniteData { index }`, `InsufficientData { min, got }` and
+  `InvalidLambdaRange { min, max }`. The WebAssembly refusals report them as fields
+  (`parameter`, `index`, `got`, `min`, `max`) instead of only in the message.
 - `UNumflow` is marked `IsAotCompatible`: the trimming and NativeAOT analyzers run on
   every build and any finding fails it, so the package stays usable in trimmed and
   NativeAOT applications.

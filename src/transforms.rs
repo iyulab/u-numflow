@@ -16,33 +16,37 @@ use crate::stats::population_variance;
 
 /// Errors that can arise from Box-Cox transformations.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub enum TransformError {
-    /// Box-Cox requires all y > 0.
-    NonPositiveData,
-    /// Data contains NaN or an infinity.
-    NonFiniteData,
-    /// Need at least 2 data points.
-    InsufficientData,
+    /// Box-Cox requires all y > 0: the first value that is not, and where.
+    NonPositiveData { index: usize, value: f64 },
+    /// The first NaN or infinity in the data, by position.
+    NonFiniteData { index: usize },
+    /// Fewer values than the transformation needs.
+    InsufficientData { min: usize, got: usize },
     /// The forward transformation produced non-finite values (`y^λ` beyond
     /// the range of `f64`, or a non-finite λ).
     InvalidTransform,
     /// Inverse transformation produced non-finite values.
     InvalidInverse,
     /// The λ search range is empty or not finite (`lambda_min >= lambda_max`).
-    InvalidLambdaRange,
+    InvalidLambdaRange { min: f64, max: f64 },
 }
 
 impl fmt::Display for TransformError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            TransformError::NonPositiveData => {
-                write!(f, "Box-Cox requires all y > 0")
+            TransformError::NonPositiveData { index, value } => {
+                write!(
+                    f,
+                    "Box-Cox requires all y > 0, got {value} at index {index}"
+                )
             }
-            TransformError::NonFiniteData => {
-                write!(f, "data must not contain NaN or infinite values")
+            TransformError::NonFiniteData { index } => {
+                write!(f, "data[{index}] is not a finite number")
             }
-            TransformError::InsufficientData => {
-                write!(f, "need at least 2 data points")
+            TransformError::InsufficientData { min, got } => {
+                write!(f, "need at least {min} data points, got {got}")
             }
             TransformError::InvalidTransform => {
                 write!(f, "transformation produced non-finite values")
@@ -50,10 +54,11 @@ impl fmt::Display for TransformError {
             TransformError::InvalidInverse => {
                 write!(f, "inverse transformation produced non-finite values")
             }
-            TransformError::InvalidLambdaRange => {
+            TransformError::InvalidLambdaRange { min, max } => {
                 write!(
                     f,
-                    "lambda search range must be finite with lambda_min < lambda_max"
+                    "lambda search range must be finite with lambda_min < lambda_max, \
+                     got [{min}, {max}]"
                 )
             }
         }
@@ -66,13 +71,19 @@ impl std::error::Error for TransformError {}
 
 fn validate_positive_slice(y: &[f64]) -> Result<(), TransformError> {
     if y.len() < 2 {
-        return Err(TransformError::InsufficientData);
+        return Err(TransformError::InsufficientData {
+            min: 2,
+            got: y.len(),
+        });
     }
-    if y.iter().any(|v| !v.is_finite()) {
-        return Err(TransformError::NonFiniteData);
+    if let Some(index) = y.iter().position(|v| !v.is_finite()) {
+        return Err(TransformError::NonFiniteData { index });
     }
-    if y.iter().any(|&v| v <= 0.0) {
-        return Err(TransformError::NonPositiveData);
+    if let Some(index) = y.iter().position(|&v| v <= 0.0) {
+        return Err(TransformError::NonPositiveData {
+            index,
+            value: y[index],
+        });
     }
     Ok(())
 }
@@ -227,7 +238,10 @@ pub fn estimate_lambda(
     lambda_max: f64,
 ) -> Result<LambdaEstimate, TransformError> {
     if !lambda_min.is_finite() || !lambda_max.is_finite() || lambda_min >= lambda_max {
-        return Err(TransformError::InvalidLambdaRange);
+        return Err(TransformError::InvalidLambdaRange {
+            min: lambda_min,
+            max: lambda_max,
+        });
     }
     validate_positive_slice(y)?;
 
@@ -516,10 +530,13 @@ mod tests {
     fn non_finite_data_is_reported_not_passed_through() {
         for bad in [f64::NAN, f64::INFINITY] {
             let y = [1.0, bad, 3.0];
-            assert_eq!(box_cox(&y, 0.5), Err(TransformError::NonFiniteData));
+            assert_eq!(
+                box_cox(&y, 0.5),
+                Err(TransformError::NonFiniteData { index: 1 })
+            );
             assert_eq!(
                 estimate_lambda(&y, -2.0, 2.0),
-                Err(TransformError::NonFiniteData)
+                Err(TransformError::NonFiniteData { index: 1 })
             );
         }
     }
@@ -538,9 +555,21 @@ mod tests {
     }
 
     #[test]
-    fn non_positive_returns_error() {
-        assert!(box_cox(&[1.0, -1.0, 2.0], 0.5).is_err());
-        assert!(box_cox(&[0.0, 1.0, 2.0], 0.5).is_err());
+    fn a_non_positive_value_is_refused_where_it_sits() {
+        assert_eq!(
+            box_cox(&[1.0, -1.0, 2.0], 0.5),
+            Err(TransformError::NonPositiveData {
+                index: 1,
+                value: -1.0
+            })
+        );
+        assert_eq!(
+            box_cox(&[0.0, 1.0, 2.0], 0.5),
+            Err(TransformError::NonPositiveData {
+                index: 0,
+                value: 0.0
+            })
+        );
     }
 
     #[test]
@@ -548,7 +577,7 @@ mod tests {
         assert!(box_cox(&[1.0], 0.5).is_err());
         assert_eq!(
             estimate_lambda(&[1.0], -2.0, 2.0),
-            Err(TransformError::InsufficientData)
+            Err(TransformError::InsufficientData { min: 2, got: 1 })
         );
     }
 
@@ -582,9 +611,12 @@ mod tests {
             (f64::NAN, 1.0),
             (-1.0, f64::INFINITY),
         ] {
-            assert_eq!(
-                estimate_lambda(&y, lo, hi),
-                Err(TransformError::InvalidLambdaRange),
+            // NaN bounds compare unequal, so match on the variant.
+            assert!(
+                matches!(
+                    estimate_lambda(&y, lo, hi),
+                    Err(TransformError::InvalidLambdaRange { .. })
+                ),
                 "range [{lo}, {hi}]"
             );
         }

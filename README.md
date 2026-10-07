@@ -231,10 +231,10 @@ try {
 | `reversed_interval` | `parameter`, `index` | An interval row with start > end — refused, not swapped |
 | `value_not_finite` | `parameter`, `index` for an array element | A NaN argument, or a NaN or infinity in any `data` array or interval row (`parameter` is the row's path) |
 | `empty_input` | `parameter` | `mean` of no values |
-| `non_positive_data` | — | Box-Cox data with a value `≤ 0` |
-| `insufficient_data` | `parameter`, `min`, `got` for `std_dev`/`variance`; — for Box-Cox | Fewer values than the function needs (`std_dev`/`variance` 2, Box-Cox 2) |
+| `non_positive_data` | `parameter`, `index`, `got` | Box-Cox data with a value `≤ 0` — `index` is the first such value |
+| `insufficient_data` | `parameter`, `min`, `got` | Fewer values than the function needs (`std_dev`/`variance` 2, Box-Cox 2) |
 | `invalid_transform` | — | A Box-Cox result that is not finite |
-| `invalid_lambda_range` | — | `estimate_lambda` bounds that are not finite with `lambda_min < lambda_max` |
+| `invalid_lambda_range` | `parameter`, `min`, `max` | `estimate_lambda` bounds that are not finite with `lambda_min < lambda_max` (`min`/`max` are the bounds given) |
 
 ### TypeScript
 

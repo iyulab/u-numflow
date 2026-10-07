@@ -131,18 +131,43 @@ fn at_least(data: Vec<f64>, min: usize) -> Result<Vec<f64>, Refusal> {
 
 impl From<TransformError> for Refusal {
     fn from(e: TransformError) -> Self {
-        let code = match e {
-            TransformError::NonPositiveData => "non_positive_data",
-            TransformError::NonFiniteData => "value_not_finite",
-            TransformError::InsufficientData => "insufficient_data",
-            TransformError::InvalidTransform => "invalid_transform",
-            TransformError::InvalidInverse => "invalid_inverse",
-            TransformError::InvalidLambdaRange => "invalid_lambda_range",
+        let data = ("parameter", Field::Str("data"));
+        let (code, fields) = match e {
+            TransformError::NonPositiveData { index, value } => (
+                "non_positive_data",
+                vec![
+                    data,
+                    ("index", Field::Num(index as f64)),
+                    ("got", Field::Num(value)),
+                ],
+            ),
+            TransformError::NonFiniteData { index } => (
+                "value_not_finite",
+                vec![data, ("index", Field::Num(index as f64))],
+            ),
+            TransformError::InsufficientData { min, got } => (
+                "insufficient_data",
+                vec![
+                    data,
+                    ("min", Field::Num(min as f64)),
+                    ("got", Field::Num(got as f64)),
+                ],
+            ),
+            TransformError::InvalidLambdaRange { min, max } => (
+                "invalid_lambda_range",
+                vec![
+                    ("parameter", Field::Str("lambda_min")),
+                    ("min", Field::Num(min)),
+                    ("max", Field::Num(max)),
+                ],
+            ),
+            TransformError::InvalidTransform => ("invalid_transform", Vec::new()),
+            TransformError::InvalidInverse => ("invalid_inverse", Vec::new()),
         };
         Refusal {
             code,
             message: e.to_string(),
-            fields: Vec::new(),
+            fields,
         }
     }
 }
@@ -772,8 +797,18 @@ mod tests {
 
     #[test]
     fn transform_errors_keep_their_reason() {
-        let r = Refusal::from(TransformError::NonPositiveData);
+        let r = Refusal::from(TransformError::NonPositiveData {
+            index: 2,
+            value: -0.5,
+        });
         assert_eq!(r.code, "non_positive_data");
-        assert_eq!(r.message, TransformError::NonPositiveData.to_string());
+        assert_eq!(
+            r.message,
+            TransformError::NonPositiveData {
+                index: 2,
+                value: -0.5
+            }
+            .to_string()
+        );
     }
 }
