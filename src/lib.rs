@@ -35,6 +35,8 @@ pub mod transforms;
 
 #[cfg(feature = "wasm")]
 pub mod wasm;
+#[cfg(feature = "wasm")]
+mod wire;
 
 // The README's Rust examples are the first code most users copy, so they are
 // compiled and run with the doc-tests. Without this they were checked by

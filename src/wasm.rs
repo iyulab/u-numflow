@@ -16,6 +16,8 @@
 //! - `t_distribution_cdf(t, df)` / `t_distribution_quantile(p, df)` → `f64` (throw on an invalid argument)
 //! - `f_distribution_cdf(x, df1, df2)` / `f_distribution_quantile(p, df1, df2)` → `f64` (same)
 //! - `chi_squared_cdf(x, k)` / `chi_squared_quantile(p, k)` → `f64` (same)
+//! - `distribution_cdf(distribution, x)` · `distribution_quantile(distribution, p)` →
+//!   `f64`; `distribution_sample(distribution, n, seed)` → `Float64Array`
 //! - `interval_normalize(intervals)` · `interval_union(a, b)` ·
 //!   `interval_intersection(a, b)` · `interval_difference(a, b)` →
 //!   `[number, number][]` in normal form; `interval_measure(intervals)` → `f64`
@@ -477,6 +479,173 @@ pub fn chi_squared_quantile(p: f64, k: f64) -> Result<f64, JsValue> {
     check_probability(p)?;
     check_df("k", k)?;
     Ok(crate::special::chi_squared_quantile(p, k))
+}
+
+// ── Distributions by specification ────────────────────────────────────────
+//
+// `distribution` is `{ kind, ...parameters }` (see `wire::DistributionSpec`).
+
+/// A NaN or ±Infinity anywhere in a JS value, with the path to it.
+fn find_non_finite(value: &JsValue, parameter: &str) -> Option<(String, f64)> {
+    if let Some(n) = value.as_f64() {
+        return (!n.is_finite()).then(|| (parameter.to_string(), n));
+    }
+    if !value.is_object() {
+        return None;
+    }
+    let object: &js_sys::Object = wasm_bindgen::JsCast::unchecked_ref(value);
+    for entry in js_sys::Object::entries(object).iter() {
+        let pair: js_sys::Array = wasm_bindgen::JsCast::unchecked_into(entry);
+        let key = pair.get(0).as_string().unwrap_or_default();
+        let inner = find_non_finite(&pair.get(1), &format!("{parameter}.{key}"));
+        if inner.is_some() {
+            return inner;
+        }
+    }
+    None
+}
+
+/// A `distribution` argument, read as sent and built.
+fn read_distribution(value: &JsValue) -> Result<crate::wire::Distribution, Refusal> {
+    const P: &str = "distribution";
+    let malformed = |message: String| Refusal {
+        code: "malformed_input",
+        message,
+        fields: vec![("parameter", Field::Str(P))],
+    };
+    if !value.is_object() {
+        return Err(malformed(format!(
+            "{P}: expected an object such as {{ kind: \"normal\", mu: 0, sigma: 1 }}"
+        )));
+    }
+    let kind = js_sys::Reflect::get(value, &"kind".into()).unwrap_or(JsValue::UNDEFINED);
+    let Some(kind) = kind.as_string() else {
+        return Err(malformed(format!(
+            "{P}.kind: expected a string naming the distribution"
+        )));
+    };
+    if !crate::wire::KINDS.contains(&kind.as_str()) {
+        return Err(Refusal {
+            code: "unknown_option",
+            message: format!(
+                "{P}.kind: unknown distribution \"{kind}\"; expected one of {}",
+                crate::wire::KINDS.join(", ")
+            ),
+            fields: vec![
+                ("parameter", Field::Str("distribution.kind")),
+                ("got", Field::Path(kind)),
+                ("expected", Field::Path(crate::wire::KINDS.join(", "))),
+            ],
+        });
+    }
+    if let Some((path, n)) = find_non_finite(value, P) {
+        return Err(Refusal {
+            code: "value_not_finite",
+            message: format!("{path}: expected a finite number, got {n}"),
+            fields: vec![("parameter", Field::Path(path))],
+        });
+    }
+    let spec: crate::wire::DistributionSpec = serde_wasm_bindgen::from_value(value.clone())
+        .map_err(|e| {
+            // serde-wasm-bindgen's text carries a leading "Error: ".
+            let text = e.to_string();
+            malformed(format!("{P}: {}", text.trim_start_matches("Error: ")))
+        })?;
+    spec.build().map_err(|e| {
+        use crate::distributions::DistributionError as E;
+        let message = format!("{P}: {e}");
+        match e {
+            E::NotFinite { parameter } => Refusal {
+                code: "value_not_finite",
+                message,
+                fields: vec![("parameter", Field::Path(format!("{P}.{parameter}")))],
+            },
+            E::NotPositive { parameter, got } => Refusal {
+                code: "parameter_out_of_range",
+                message,
+                fields: vec![
+                    ("parameter", Field::Path(format!("{P}.{parameter}"))),
+                    ("min", Field::Num(0.0)),
+                    ("max", Field::Null),
+                    ("got", Field::Num(got)),
+                ],
+            },
+            E::Unordered { parameter, .. } => Refusal {
+                code: "invalid_option",
+                message,
+                fields: vec![("parameter", Field::Path(format!("{P}.{parameter}")))],
+            },
+        }
+    })
+}
+
+/// A whole number in `[0, max]`, refused as `parameter_out_of_range` otherwise.
+fn whole(parameter: &'static str, x: f64, max: f64) -> Result<f64, Refusal> {
+    if x.is_finite() && x >= 0.0 && x <= max && x.fract() == 0.0 {
+        Ok(x)
+    } else {
+        Err(Refusal::out_of_range(
+            parameter,
+            0.0,
+            Some(max),
+            x,
+            format!("{parameter} must be a whole number in [0, {max}], got {x}"),
+        ))
+    }
+}
+
+/// `P(X ≤ x)` for the distribution `{ kind, ...parameters }`.
+///
+/// # Errors
+/// As every `distribution` argument: `malformed_input` for a value that is
+/// not such an object, `unknown_option` for an unknown `kind` (with
+/// `expected`), `value_not_finite` for a NaN or infinite parameter,
+/// `parameter_out_of_range` for a parameter that must be `> 0`, and
+/// `invalid_option` for parameters out of order (`min < max`,
+/// `min ≤ mode ≤ max`). `x` NaN throws `value_not_finite`.
+#[wasm_bindgen]
+pub fn distribution_cdf(
+    #[wasm_bindgen(unchecked_param_type = "DistributionSpec")] distribution: JsValue,
+    x: f64,
+) -> Result<f64, JsValue> {
+    let d = read_distribution(&distribution)?;
+    check_finite("x", x)?;
+    Ok(d.cdf(x))
+}
+
+/// The `x` with `P(X ≤ x) = p`.
+///
+/// # Errors
+/// As [`distribution_cdf`] for `distribution`; `p` outside `(0, 1)` throws
+/// `parameter_out_of_range`.
+#[wasm_bindgen]
+pub fn distribution_quantile(
+    #[wasm_bindgen(unchecked_param_type = "DistributionSpec")] distribution: JsValue,
+    p: f64,
+) -> Result<f64, JsValue> {
+    let d = read_distribution(&distribution)?;
+    check_probability(p)?;
+    Ok(d.quantile(p))
+}
+
+/// `n` random variates, reproducible from `seed`: the same `(distribution, n,
+/// seed)` always returns the same values. Uniforms are drawn from the open
+/// interval (0, 1), so no variate is infinite.
+///
+/// # Errors
+/// As [`distribution_cdf`] for `distribution`; `n` not a whole number in
+/// `[0, 2³² − 1]` or `seed` not a whole number in `[0, 2⁵³]` throws
+/// `parameter_out_of_range`.
+#[wasm_bindgen]
+pub fn distribution_sample(
+    #[wasm_bindgen(unchecked_param_type = "DistributionSpec")] distribution: JsValue,
+    n: f64,
+    seed: f64,
+) -> Result<Vec<f64>, JsValue> {
+    let d = read_distribution(&distribution)?;
+    let n = whole("n", n, u32::MAX as f64)? as usize;
+    let seed = whole("seed", seed, 9_007_199_254_740_992.0)? as u64;
+    Ok(d.sample_n(n, seed))
 }
 
 // ── Interval sets ─────────────────────────────────────────────────────────

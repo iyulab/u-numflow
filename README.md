@@ -22,6 +22,7 @@ u-numflow provides foundational mathematical, statistical, and probabilistic bui
 | `fourier` | Discrete Fourier transform of any length (radix-2 for powers of two, Bluestein otherwise): `fft`, `ifft`, `rfft`, `Complex` |
 | `matrix` | Dense matrix operations: determinant, inverse, Cholesky decomposition, Jacobi eigenvalue decomposition |
 | `random` | Seeded RNG, Fisher-Yates shuffle, weighted sampling, random subset selection |
+| `distributions::Sample` | Random variates from every continuous distribution — `sample(&mut rng)` and reproducible `sample_n(n, seed)`; inversion where the quantile is direct, Marsaglia–Tsang for the gamma family (Gamma, χ², Beta, PERT); uniforms from the open interval (0, 1), so no variate is infinite |
 | `collections` | Specialized data structures: Union-Find with path compression and union-by-rank; `IntervalSet` — unions of half-open intervals with union, intersection, difference, clip and a measure that counts overlapping input once |
 
 ## Design Philosophy
@@ -49,11 +50,14 @@ for x in [1.0, 2.0, 3.0, 4.0, 5.0] {
 }
 assert_eq!(stats.mean(), Some(3.0));
 
-// PERT distribution: moments and quantiles; sample by inverting a uniform draw
+// PERT distribution: moments, quantiles and reproducible samples
+use u_numflow::distributions::Sample;
 let pert = Pert::new(1.0, 4.0, 7.0).unwrap();
 assert_eq!(pert.mean(), 4.0);
 let p90 = pert.quantile(0.9).unwrap();
 assert!(p90 > 4.0 && p90 < 7.0);
+let draws = pert.sample_n(1000, 7); // same (n, seed), same draws
+assert!(draws.iter().all(|&x| (1.0..=7.0).contains(&x)));
 
 // Seeded shuffling for reproducibility
 let mut rng = create_rng(42);
@@ -151,6 +155,34 @@ const { t_distribution_quantile } = require("@iyulab/u-numflow");
 t_distribution_quantile(0.975, 10); // 2.2281…
 ```
 
+Any of the crate's distributions by specification — `distribution` is an object
+`{ kind, ...parameters }`, declared as the union type `DistributionSpec`:
+
+| `kind` | Parameters |
+|---|---|
+| `uniform` | `min`, `max` |
+| `triangular` | `min`, `mode`, `max` |
+| `pert` | `min`, `mode`, `max`, `lambda?` (default 4) |
+| `normal` / `lognormal` | `mu`, `sigma` |
+| `weibull` | `shape`, `scale` |
+| `exponential` | `rate` |
+| `gamma` | `shape`, `rate` |
+| `beta` | `alpha`, `beta` |
+| `chi_squared` | `k` |
+
+| Function | Returns |
+|---|---|
+| `distribution_cdf(distribution, x)` | `P(X ≤ x)` |
+| `distribution_quantile(distribution, p)` | `x` with `P(X ≤ x) = p`, `p` strictly inside (0, 1) |
+| `distribution_sample(distribution, n, seed)` | `Float64Array` of `n` variates — the same `(distribution, n, seed)` always gives the same values |
+
+```js
+const { distribution_quantile, distribution_sample } = require("@iyulab/u-numflow");
+distribution_quantile({ kind: "chi_squared", k: 4 }, 0.95);              // 9.4877…
+const lives = distribution_sample({ kind: "weibull", shape: 2, scale: 100 }, 1000, 42);
+console.log(lives.length);                                                // 1000
+```
+
 Interval sets — each argument is a `[start, end][]` of half-open intervals, and every
 result is in normal form (sorted, disjoint, touching pieces merged, empty ones dropped):
 
@@ -181,8 +213,10 @@ try {
 
 | `code` | Fields | Meaning |
 |---|---|---|
-| `parameter_out_of_range` | `parameter`, `min`, `max` (or `null`), `got` | `p` not strictly inside (0, 1), or a degrees of freedom that is not a finite number `> 0` (both bounds excluded) |
-| `malformed_input` | `parameter`, `index` (or absent) | A `data` argument that is not an array or `Float64Array`, or an element that is not a number; an interval row that is not two numbers (`parameter` is its path, e.g. `a[2]`) |
+| `parameter_out_of_range` | `parameter`, `min`, `max` (or `null`), `got` | `p` not strictly inside (0, 1), or a degrees of freedom that is not a finite number `> 0` (both bounds excluded); a distribution parameter that must be `> 0` (`parameter` is its path, e.g. `distribution.sigma`); `n` or `seed` not a whole number in range |
+| `unknown_option` | `parameter`, `got`, `expected` | A `distribution.kind` the crate does not have |
+| `invalid_option` | `parameter` | Distribution parameters out of order: `min < max`, `min ≤ mode ≤ max` |
+| `malformed_input` | `parameter`, `index` (or absent) | A `data` argument that is not an array or `Float64Array`, or an element that is not a number; a `distribution` that is not an object with a string `kind`, lacks a parameter or has one its kind does not take; an interval row that is not two numbers (`parameter` is its path, e.g. `a[2]`) |
 | `reversed_interval` | `parameter`, `index` | An interval row with start > end — refused, not swapped |
 | `value_not_finite` | `parameter`, `index` for an array element | A NaN argument, or a NaN or infinity in any `data` array or interval row (`parameter` is the row's path) |
 | `empty_input` | `parameter` | `mean` of no values |

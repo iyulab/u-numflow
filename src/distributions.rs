@@ -25,20 +25,87 @@
 
 use crate::special;
 
-/// Error type for invalid distribution parameters.
+mod sampling;
+
+pub use sampling::Sample;
+
+/// Why a distribution's parameters were refused — the parameter, and the
+/// rule it breaks.
 #[derive(Debug, Clone, PartialEq)]
 pub enum DistributionError {
-    /// Parameters violate distribution constraints.
-    InvalidParameters(String),
+    /// A parameter is NaN or infinite.
+    NotFinite {
+        /// The parameter's name (`"sigma"`, `"shape"`, …).
+        parameter: &'static str,
+    },
+    /// A parameter that must be greater than 0 is not (σ, a rate, a shape,
+    /// a scale, degrees of freedom, PERT λ).
+    NotPositive {
+        /// The parameter's name.
+        parameter: &'static str,
+        /// The value given.
+        got: f64,
+    },
+    /// Parameters out of their required order (`min < max`,
+    /// `min ≤ mode ≤ max`).
+    Unordered {
+        /// The parameter that falls outside the order (`"max"` when
+        /// `min ≥ max`, `"mode"` when it lies outside `[min, max]`).
+        parameter: &'static str,
+        /// The order that must hold, as text.
+        relation: &'static str,
+    },
 }
 
 impl std::fmt::Display for DistributionError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            DistributionError::InvalidParameters(msg) => {
-                write!(f, "invalid distribution parameters: {msg}")
+            DistributionError::NotFinite { parameter } => {
+                write!(f, "{parameter} must be a finite number")
             }
+            DistributionError::NotPositive { parameter, got } => {
+                write!(f, "{parameter} must be greater than 0, got {got}")
+            }
+            DistributionError::Unordered {
+                parameter,
+                relation,
+            } => write!(f, "{parameter} breaks the required order {relation}"),
         }
+    }
+}
+
+/// Every value finite, in order: the first that is not is named.
+fn finite(params: &[(&'static str, f64)]) -> Result<(), DistributionError> {
+    match params.iter().find(|(_, x)| !x.is_finite()) {
+        Some(&(parameter, _)) => Err(DistributionError::NotFinite { parameter }),
+        None => Ok(()),
+    }
+}
+
+/// A finite value greater than 0.
+fn positive(parameter: &'static str, x: f64) -> Result<(), DistributionError> {
+    finite(&[(parameter, x)])?;
+    if x > 0.0 {
+        Ok(())
+    } else {
+        Err(DistributionError::NotPositive { parameter, got: x })
+    }
+}
+
+/// `min < max` and, given a mode, `min ≤ mode ≤ max` (all already finite).
+fn ordered(min: f64, mode: Option<f64>, max: f64) -> Result<(), DistributionError> {
+    if min >= max {
+        return Err(DistributionError::Unordered {
+            parameter: "max",
+            relation: "min < max",
+        });
+    }
+    match mode {
+        Some(m) if m < min || m > max => Err(DistributionError::Unordered {
+            parameter: "mode",
+            relation: "min ≤ mode ≤ max",
+        }),
+        _ => Ok(()),
     }
 }
 
@@ -67,11 +134,8 @@ impl Uniform {
     /// # Errors
     /// Returns `Err` if `min >= max` or either parameter is not finite.
     pub fn new(min: f64, max: f64) -> Result<Self, DistributionError> {
-        if !min.is_finite() || !max.is_finite() || min >= max {
-            return Err(DistributionError::InvalidParameters(format!(
-                "Uniform requires min < max, got min={min}, max={max}"
-            )));
-        }
+        finite(&[("min", min), ("max", max)])?;
+        ordered(min, None, max)?;
         Ok(Self { min, max })
     }
 
@@ -150,16 +214,8 @@ impl Triangular {
     /// # Errors
     /// Returns `Err` if `min >= max` or `mode` is outside `[min, max]`.
     pub fn new(min: f64, mode: f64, max: f64) -> Result<Self, DistributionError> {
-        if !min.is_finite() || !mode.is_finite() || !max.is_finite() {
-            return Err(DistributionError::InvalidParameters(
-                "Triangular parameters must be finite".into(),
-            ));
-        }
-        if min > mode || mode > max || min >= max {
-            return Err(DistributionError::InvalidParameters(format!(
-                "Triangular requires min ≤ mode ≤ max and min < max, got {min}, {mode}, {max}"
-            )));
-        }
+        finite(&[("min", min), ("mode", mode), ("max", max)])?;
+        ordered(min, Some(mode), max)?;
         Ok(Self { min, mode, max })
     }
 
@@ -268,11 +324,8 @@ impl Normal {
     /// # Errors
     /// Returns `Err` if `sigma ≤ 0` or parameters are not finite.
     pub fn new(mu: f64, sigma: f64) -> Result<Self, DistributionError> {
-        if !mu.is_finite() || !sigma.is_finite() || sigma <= 0.0 {
-            return Err(DistributionError::InvalidParameters(format!(
-                "Normal requires finite μ and σ > 0, got μ={mu}, σ={sigma}"
-            )));
-        }
+        finite(&[("mu", mu)])?;
+        positive("sigma", sigma)?;
         Ok(Self { mu, sigma })
     }
 
@@ -347,11 +400,8 @@ impl LogNormal {
     /// # Errors
     /// Returns `Err` if `sigma ≤ 0` or parameters are not finite.
     pub fn new(mu: f64, sigma: f64) -> Result<Self, DistributionError> {
-        if !mu.is_finite() || !sigma.is_finite() || sigma <= 0.0 {
-            return Err(DistributionError::InvalidParameters(format!(
-                "LogNormal requires finite μ and σ > 0, got μ={mu}, σ={sigma}"
-            )));
-        }
+        finite(&[("mu", mu)])?;
+        positive("sigma", sigma)?;
         Ok(Self { mu, sigma })
     }
 
@@ -472,21 +522,9 @@ impl Pert {
         max: f64,
         lambda: f64,
     ) -> Result<Self, DistributionError> {
-        if !min.is_finite() || !mode.is_finite() || !max.is_finite() || !lambda.is_finite() {
-            return Err(DistributionError::InvalidParameters(
-                "PERT parameters must be finite".into(),
-            ));
-        }
-        if min > mode || mode > max || min >= max {
-            return Err(DistributionError::InvalidParameters(format!(
-                "PERT requires min ≤ mode ≤ max and min < max, got {min}, {mode}, {max}"
-            )));
-        }
-        if lambda <= 0.0 {
-            return Err(DistributionError::InvalidParameters(format!(
-                "PERT λ must be > 0, got {lambda}"
-            )));
-        }
+        finite(&[("min", min), ("mode", mode), ("max", max)])?;
+        ordered(min, Some(mode), max)?;
+        positive("lambda", lambda)?;
 
         let range = max - min;
         let alpha = 1.0 + lambda * (mode - min) / range;
@@ -623,11 +661,8 @@ impl Weibull {
     /// # Errors
     /// Returns `Err` if `shape ≤ 0`, `scale ≤ 0`, or either is not finite.
     pub fn new(shape: f64, scale: f64) -> Result<Self, DistributionError> {
-        if !shape.is_finite() || !scale.is_finite() || shape <= 0.0 || scale <= 0.0 {
-            return Err(DistributionError::InvalidParameters(format!(
-                "Weibull requires shape > 0 and scale > 0, got shape={shape}, scale={scale}"
-            )));
-        }
+        positive("shape", shape)?;
+        positive("scale", scale)?;
         Ok(Self { shape, scale })
     }
 
@@ -748,11 +783,7 @@ impl Exponential {
     ///
     /// Returns an error if λ ≤ 0 or λ is not finite.
     pub fn new(rate: f64) -> Result<Self, DistributionError> {
-        if !rate.is_finite() || rate <= 0.0 {
-            return Err(DistributionError::InvalidParameters(format!(
-                "Exponential rate must be positive and finite, got {rate}"
-            )));
-        }
+        positive("rate", rate)?;
         Ok(Self { rate })
     }
 
@@ -850,21 +881,14 @@ impl GammaDistribution {
     ///
     /// Returns an error if α ≤ 0, β ≤ 0, or either is not finite.
     pub fn new(shape: f64, rate: f64) -> Result<Self, DistributionError> {
-        if !shape.is_finite() || shape <= 0.0 || !rate.is_finite() || rate <= 0.0 {
-            return Err(DistributionError::InvalidParameters(format!(
-                "Gamma shape and rate must be positive and finite, got shape={shape}, rate={rate}"
-            )));
-        }
+        positive("shape", shape)?;
+        positive("rate", rate)?;
         Ok(Self { shape, rate })
     }
 
     /// Creates a Gamma distribution from shape and scale θ = 1/β.
     pub fn from_shape_scale(shape: f64, scale: f64) -> Result<Self, DistributionError> {
-        if !scale.is_finite() || scale <= 0.0 {
-            return Err(DistributionError::InvalidParameters(format!(
-                "Gamma scale must be positive and finite, got {scale}"
-            )));
-        }
+        positive("scale", scale)?;
         Self::new(shape, 1.0 / scale)
     }
 
@@ -1006,16 +1030,8 @@ impl BetaDistribution {
     /// # Errors
     /// Returns `DistributionError` if α ≤ 0 or β ≤ 0.
     pub fn new(alpha: f64, beta: f64) -> Result<Self, DistributionError> {
-        if alpha <= 0.0 || !alpha.is_finite() {
-            return Err(DistributionError::InvalidParameters(format!(
-                "alpha must be positive and finite, got {alpha}"
-            )));
-        }
-        if beta <= 0.0 || !beta.is_finite() {
-            return Err(DistributionError::InvalidParameters(format!(
-                "beta must be positive and finite, got {beta}"
-            )));
-        }
+        positive("alpha", alpha)?;
+        positive("beta", beta)?;
         Ok(Self { alpha, beta })
     }
 
@@ -1140,11 +1156,7 @@ impl ChiSquared {
     /// # Errors
     /// Returns `DistributionError` if k ≤ 0.
     pub fn new(k: f64) -> Result<Self, DistributionError> {
-        if k <= 0.0 || !k.is_finite() {
-            return Err(DistributionError::InvalidParameters(format!(
-                "k must be positive and finite, got {k}"
-            )));
-        }
+        positive("k", k)?;
         Ok(Self { k })
     }
 

@@ -8,8 +8,28 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking:** `DistributionError` names the parameter and the rule it
+  breaks instead of carrying one sentence: `NotFinite { parameter }`,
+  `NotPositive { parameter, got }`, and `Unordered { parameter, relation }`
+  (`min < max`, `min ≤ mode ≤ max`). `InvalidParameters(String)` is gone.
+
 ### Added
 
+- `distributions::Sample` — `sample(&mut rng)` and reproducible
+  `sample_n(n, seed)` for Uniform, Triangular, PERT, Normal, LogNormal,
+  Weibull, Exponential, Gamma, Beta and χ². Inversion where the quantile is
+  direct (a larger uniform always gives a larger variate, so runs on one seed
+  are coupled); Marsaglia–Tsang (2000) for the gamma family, whose quantile is a
+  Newton iteration. Uniforms come from the open interval (0, 1) — 52 bits
+  offset by half a step, since the 53-bit top value `1 − 2⁻⁵⁴` rounds to 1 — so
+  no variate is infinite.
+- WebAssembly: `distribution_cdf`, `distribution_quantile` and
+  `distribution_sample(distribution, n, seed)` over a `{ kind, ...parameters }`
+  specification (declared `DistributionSpec`). An unknown `kind` throws
+  `unknown_option` with `expected`; a bad parameter throws with its path
+  (`distribution.sigma`).
 - `collections::IntervalSet<T>` — a finite union of half-open intervals
   `[start, end)`, always kept sorted, disjoint and with touching pieces merged:
   `from_intervals`, `insert`, `union`, `intersection`, `difference`, `clip`,
