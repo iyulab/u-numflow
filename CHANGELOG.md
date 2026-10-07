@@ -8,6 +8,10 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ## [Unreleased]
 
+### Added
+
+- `UNumflow` carries the native library for `linux-arm64` (glibc 2.39 or later).
+
 ### Changed
 
 - `UNumflow` is marked `IsAotCompatible`: the trimming and NativeAOT analyzers run on
