@@ -35,7 +35,7 @@ u-numflow provides foundational mathematical, statistical, and probabilistic bui
 
 ```toml
 [dependencies]
-u-numflow = "0.9"
+u-numflow = "0.10"
 ```
 
 ```rust

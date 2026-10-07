@@ -11,7 +11,7 @@
     <!-- NuGet Package Metadata -->
     <PackageId>UNumflow</PackageId>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <Version>0.1.0</Version>
+    <Version>0.2.0</Version>
     <Authors>iyulab</Authors>
     <Company>iyulab</Company>
     <Product>UNumflow</Product>
