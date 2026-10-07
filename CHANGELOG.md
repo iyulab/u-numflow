@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Maintained from 0.2.1 onward; earlier entries list release dates only (see git history).
 
+## [Unreleased]
+
+### Added
+
+- `collections::IntervalSet<T>` — a finite union of half-open intervals
+  `[start, end)`, always kept sorted, disjoint and with touching pieces merged:
+  `from_intervals`, `insert`, `union`, `intersection`, `difference`, `clip`,
+  `measure`, `contains`, iteration. Because the pieces never overlap, `measure`
+  counts every point once however much the input overlapped. Works over `f32`,
+  `f64` and every primitive integer; the measure of an integer set is the
+  unsigned type of the same width (as `i64::abs_diff`), so it cannot overflow.
+  A reversed interval (`start > end`) or a NaN/infinite bound is refused as
+  `IntervalError` with its position — never swapped or dropped.
+- WebAssembly: `interval_normalize`, `interval_measure`, `interval_union`,
+  `interval_intersection` and `interval_difference` over `[number, number][]`.
+  A row that is not two numbers throws `malformed_input` at its path
+  (`a[2]`), a reversed row `reversed_interval` with `parameter` and `index`.
+
+### Fixed
+
+- README: the dependency list named `rand` 0.9 (the crate uses 0.10), and the
+  module table listed five of the ten distributions.
+
 ## [0.8.0] - 2026-10-04
 
 ### Changed

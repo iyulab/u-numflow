@@ -16,13 +16,13 @@ u-numflow provides foundational mathematical, statistical, and probabilistic bui
 | Module | Description |
 |--------|-------------|
 | `stats` | Descriptive statistics (mean, variance, skewness, kurtosis) with Welford's online algorithm and Neumaier summation |
-| `distributions` | Probability distributions: Uniform, Triangular, PERT, Normal, LogNormal |
+| `distributions` | Probability distributions: Uniform, Triangular, PERT, Normal, LogNormal, Weibull, Exponential, Gamma, Beta, χ² |
 | `special` | Special functions: normal CDF and tail-precise survival function (and their inverses), t/F/chi² CDF and quantiles, the noncentral t CDF (Lenth AS 243 — the distribution power is computed from), regularized incomplete beta/gamma, erf |
 | `transforms` | Data transformations: Box-Cox (λ via MLE golden-section search), inverse Box-Cox |
 | `fourier` | Discrete Fourier transform of any length (radix-2 for powers of two, Bluestein otherwise): `fft`, `ifft`, `rfft`, `Complex` |
 | `matrix` | Dense matrix operations: determinant, inverse, Cholesky decomposition, Jacobi eigenvalue decomposition |
 | `random` | Seeded RNG, Fisher-Yates shuffle, weighted sampling, random subset selection |
-| `collections` | Specialized data structures: Union-Find with path compression and union-by-rank |
+| `collections` | Specialized data structures: Union-Find with path compression and union-by-rank; `IntervalSet` — unions of half-open intervals with union, intersection, difference, clip and a measure that counts overlapping input once |
 
 ## Design Philosophy
 
@@ -72,7 +72,21 @@ use u_numflow::fourier::rfft;
 let signal: Vec<f64> = (0..30).map(|j| (2.0 * std::f64::consts::PI * 3.0 * j as f64 / 30.0).sin()).collect();
 let spectrum = rfft(&signal);           // 30 complex bins; bin 3 carries the energy
 assert!(spectrum[3].norm() > 14.0);
+
+// Interval sets: overlapping stops are down-time once, not twice
+use u_numflow::collections::IntervalSet;
+let planned = IntervalSet::from_intervals([(0.0, 24.0)]).unwrap();
+let unplanned = IntervalSet::from_intervals([(10.0, 30.0)]).unwrap();
+let week = IntervalSet::from_intervals([(0.0, 168.0)]).unwrap();
+let up = week.difference(&planned.union(&unplanned));
+assert_eq!(up.measure(), 138.0);
 ```
+
+`IntervalSet<T>` works over `f32`, `f64` and every primitive integer type. Its
+measure has the type of a distance — the unsigned type of the same width for
+integers (as `i64::abs_diff` returns `u64`), so it cannot overflow. A reversed
+interval (`start > end`) or a NaN/infinite bound is refused with its position,
+never swapped or dropped.
 
 ## Build & Test
 
@@ -83,7 +97,7 @@ cargo test
 
 ## Dependencies
 
-- `rand` 0.9 — Random number generation
+- `rand` 0.10 — Random number generation
 - `proptest` 1.4 — Property-based testing (dev only)
 
 ## License
@@ -137,6 +151,22 @@ const { t_distribution_quantile } = require("@iyulab/u-numflow");
 t_distribution_quantile(0.975, 10); // 2.2281…
 ```
 
+Interval sets — each argument is a `[start, end][]` of half-open intervals, and every
+result is in normal form (sorted, disjoint, touching pieces merged, empty ones dropped):
+
+| Function | Returns |
+|---|---|
+| `interval_normalize(intervals)` | The union of `intervals`, as `[number, number][]` |
+| `interval_measure(intervals)` | Its total length — each point counted once, however many rows cover it |
+| `interval_union(a, b)` / `interval_intersection(a, b)` / `interval_difference(a, b)` | Set operations, as `[number, number][]`; clip to a window with `interval_intersection(a, [[from, to]])` |
+
+```js
+const { interval_union, interval_difference, interval_measure } = require("@iyulab/u-numflow");
+const down = interval_union([[0, 24]], [[10, 30]]);       // [[0, 30]] — the overlap counts once
+const up = interval_difference([[0, 168]], down);          // [[30, 168]]
+console.log(interval_measure(up));                         // 138
+```
+
 **Errors.** A refusal throws an `Error` whose `message` is readable text and which
 carries a `code` naming the reason, next to the values behind it:
 
@@ -152,8 +182,9 @@ try {
 | `code` | Fields | Meaning |
 |---|---|---|
 | `parameter_out_of_range` | `parameter`, `min`, `max` (or `null`), `got` | `p` not strictly inside (0, 1), or a degrees of freedom that is not a finite number `> 0` (both bounds excluded) |
-| `malformed_input` | `parameter`, `index` (or absent) | A `data` argument that is not an array or `Float64Array`, or an element that is not a number |
-| `value_not_finite` | `parameter`, `index` for an array element | A NaN argument, or a NaN or infinity in any `data` array |
+| `malformed_input` | `parameter`, `index` (or absent) | A `data` argument that is not an array or `Float64Array`, or an element that is not a number; an interval row that is not two numbers (`parameter` is its path, e.g. `a[2]`) |
+| `reversed_interval` | `parameter`, `index` | An interval row with start > end — refused, not swapped |
+| `value_not_finite` | `parameter`, `index` for an array element | A NaN argument, or a NaN or infinity in any `data` array or interval row (`parameter` is the row's path) |
 | `empty_input` | `parameter` | `mean` of no values |
 | `non_positive_data` | — | Box-Cox data with a value `≤ 0` |
 | `insufficient_data` | `parameter`, `min`, `got` for `std_dev`/`variance`; — for Box-Cox | Fewer values than the function needs (`std_dev`/`variance` 2, Box-Cox 2) |

@@ -16,6 +16,9 @@
 //! - `t_distribution_cdf(t, df)` / `t_distribution_quantile(p, df)` → `f64` (throw on an invalid argument)
 //! - `f_distribution_cdf(x, df1, df2)` / `f_distribution_quantile(p, df1, df2)` → `f64` (same)
 //! - `chi_squared_cdf(x, k)` / `chi_squared_quantile(p, k)` → `f64` (same)
+//! - `interval_normalize(intervals)` · `interval_union(a, b)` ·
+//!   `interval_intersection(a, b)` · `interval_difference(a, b)` →
+//!   `[number, number][]` in normal form; `interval_measure(intervals)` → `f64`
 //!
 //! Every `data` argument is a `number[]` or a `Float64Array`, read as sent: an
 //! element that is not a number (`null`, a string) is refused as
@@ -40,6 +43,8 @@ use crate::transforms::TransformError;
 enum Field {
     Num(f64),
     Str(&'static str),
+    /// A path built at run time, such as `a[3]`.
+    Path(String),
     Null,
 }
 
@@ -190,6 +195,7 @@ impl From<Refusal> for JsValue {
             let value = match value {
                 Field::Num(n) => JsValue::from_f64(n),
                 Field::Str(s) => s.into(),
+                Field::Path(s) => s.into(),
                 Field::Null => JsValue::NULL,
             };
             let _ = js_sys::Reflect::set(&err, &key.into(), &value);
@@ -473,9 +479,189 @@ pub fn chi_squared_quantile(p: f64, k: f64) -> Result<f64, JsValue> {
     Ok(crate::special::chi_squared_quantile(p, k))
 }
 
+// ── Interval sets ─────────────────────────────────────────────────────────
+
+/// The interval set given by `rows` (each `[start, end]`, already read as
+/// finite numbers): a row that is not a pair is `malformed_input` at
+/// `parameter[i]`, a reversed pair `reversed_interval` with `parameter` and
+/// `index`.
+///
+/// Kept apart from the `JsValue` walk so it runs off `wasm32` in tests.
+fn interval_set_from(
+    parameter: &'static str,
+    rows: Vec<Vec<f64>>,
+) -> Result<crate::collections::IntervalSet<f64>, Refusal> {
+    let mut pairs = Vec::with_capacity(rows.len());
+    for (i, row) in rows.into_iter().enumerate() {
+        match row[..] {
+            [start, end] => pairs.push((start, end)),
+            _ => {
+                return Err(Refusal {
+                    code: "malformed_input",
+                    message: format!(
+                        "{parameter}[{i}]: expected [start, end], got {} numbers",
+                        row.len()
+                    ),
+                    fields: vec![("parameter", Field::Path(format!("{parameter}[{i}]")))],
+                })
+            }
+        }
+    }
+    crate::collections::IntervalSet::from_intervals(pairs).map_err(|e| match e {
+        crate::collections::IntervalError::Reversed { index } => Refusal {
+            code: "reversed_interval",
+            message: format!("{parameter}[{index}]: start is after end"),
+            fields: vec![
+                ("parameter", Field::Str(parameter)),
+                ("index", Field::Num(index as f64)),
+            ],
+        },
+        // Unreachable: every number was checked finite while reading.
+        crate::collections::IntervalError::NotFinite { index } => Refusal {
+            code: "value_not_finite",
+            message: format!("{parameter}[{index}]: a bound is not finite"),
+            fields: vec![
+                ("parameter", Field::Str(parameter)),
+                ("index", Field::Num(index as f64)),
+            ],
+        },
+    })
+}
+
+/// Reads a `[number, number][]` argument as sent.
+fn read_intervals(
+    value: &JsValue,
+    parameter: &'static str,
+) -> Result<crate::collections::IntervalSet<f64>, Refusal> {
+    use wasm_bindgen::JsCast;
+    if !js_sys::Array::is_array(value) {
+        return Err(Refusal {
+            code: "malformed_input",
+            message: format!("{parameter}: expected an array of [start, end] pairs"),
+            fields: vec![("parameter", Field::Str(parameter))],
+        });
+    }
+    let array: &js_sys::Array = value.unchecked_ref();
+    let mut rows = Vec::with_capacity(array.length() as usize);
+    for (i, item) in array.iter().enumerate() {
+        let row = read_numbers(&item, parameter).map_err(|mut r| {
+            let path = format!("{parameter}[{i}]");
+            r.message = r.message.replacen(parameter, &path, 1);
+            for field in &mut r.fields {
+                if field.0 == "parameter" {
+                    field.1 = Field::Path(path.clone());
+                }
+            }
+            r
+        })?;
+        rows.push(row);
+    }
+    interval_set_from(parameter, rows)
+}
+
+/// The pieces of a set as a JS `[start, end][]`.
+fn intervals_to_js(set: &crate::collections::IntervalSet<f64>) -> JsValue {
+    set.iter()
+        .map(|(s, e)| js_sys::Array::of2(&JsValue::from_f64(s), &JsValue::from_f64(e)))
+        .collect::<js_sys::Array>()
+        .into()
+}
+
+/// The union of `intervals` (each `[start, end]`, half-open) in normal form:
+/// sorted, disjoint, touching pieces merged, empty ones dropped.
+///
+/// # Errors
+/// Throws `malformed_input` for a row that is not two numbers (`parameter` is
+/// the row's path, e.g. `intervals[2]`), `value_not_finite` for a NaN or
+/// ±Infinity bound, and `reversed_interval` (`parameter`, `index`) for a row
+/// with start > end — reversed rows are refused, not swapped.
+#[wasm_bindgen(unchecked_return_type = "[number, number][]")]
+pub fn interval_normalize(
+    #[wasm_bindgen(unchecked_param_type = "[number, number][]")] intervals: JsValue,
+) -> Result<JsValue, JsValue> {
+    Ok(intervals_to_js(&read_intervals(&intervals, "intervals")?))
+}
+
+/// Total length of the union of `intervals`: each point counts once, however
+/// many rows cover it.
+///
+/// # Errors
+/// As [`interval_normalize`].
+#[wasm_bindgen]
+pub fn interval_measure(
+    #[wasm_bindgen(unchecked_param_type = "[number, number][]")] intervals: JsValue,
+) -> Result<f64, JsValue> {
+    Ok(read_intervals(&intervals, "intervals")?.measure())
+}
+
+/// Points in `a` or `b`, in normal form.
+///
+/// # Errors
+/// As [`interval_normalize`], naming `a` or `b`.
+#[wasm_bindgen(unchecked_return_type = "[number, number][]")]
+pub fn interval_union(
+    #[wasm_bindgen(unchecked_param_type = "[number, number][]")] a: JsValue,
+    #[wasm_bindgen(unchecked_param_type = "[number, number][]")] b: JsValue,
+) -> Result<JsValue, JsValue> {
+    let (a, b) = (read_intervals(&a, "a")?, read_intervals(&b, "b")?);
+    Ok(intervals_to_js(&a.union(&b)))
+}
+
+/// Points in both `a` and `b`, in normal form. Clipping to a window is
+/// `interval_intersection(a, [[from, to]])`.
+///
+/// # Errors
+/// As [`interval_normalize`], naming `a` or `b`.
+#[wasm_bindgen(unchecked_return_type = "[number, number][]")]
+pub fn interval_intersection(
+    #[wasm_bindgen(unchecked_param_type = "[number, number][]")] a: JsValue,
+    #[wasm_bindgen(unchecked_param_type = "[number, number][]")] b: JsValue,
+) -> Result<JsValue, JsValue> {
+    let (a, b) = (read_intervals(&a, "a")?, read_intervals(&b, "b")?);
+    Ok(intervals_to_js(&a.intersection(&b)))
+}
+
+/// Points in `a` but not in `b`, in normal form — e.g. a reporting window
+/// minus down-time is up-time.
+///
+/// # Errors
+/// As [`interval_normalize`], naming `a` or `b`.
+#[wasm_bindgen(unchecked_return_type = "[number, number][]")]
+pub fn interval_difference(
+    #[wasm_bindgen(unchecked_param_type = "[number, number][]")] a: JsValue,
+    #[wasm_bindgen(unchecked_param_type = "[number, number][]")] b: JsValue,
+) -> Result<JsValue, JsValue> {
+    let (a, b) = (read_intervals(&a, "a")?, read_intervals(&b, "b")?);
+    Ok(intervals_to_js(&a.difference(&b)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_interval_row_that_is_not_a_pair_names_its_path() {
+        let r = interval_set_from("a", vec![vec![0.0, 1.0], vec![2.0]]).expect_err("short row");
+        assert_eq!(r.code, "malformed_input");
+        assert_eq!(r.fields, vec![("parameter", Field::Path("a[1]".into()))]);
+        assert_eq!(r.message, "a[1]: expected [start, end], got 1 numbers");
+    }
+
+    #[test]
+    fn a_reversed_interval_is_refused_at_its_index() {
+        let r = interval_set_from("b", vec![vec![0.0, 1.0], vec![5.0, 3.0]]).expect_err("reversed");
+        assert_eq!(r.code, "reversed_interval");
+        assert_eq!(
+            r.fields,
+            vec![("parameter", Field::Str("b")), ("index", Field::Num(1.0))]
+        );
+    }
+
+    #[test]
+    fn interval_rows_build_a_normal_form_set() {
+        let s = interval_set_from("a", vec![vec![3.0, 5.0], vec![0.0, 4.0]]).expect("valid");
+        assert_eq!(s.as_slice(), &[(0.0, 5.0)]);
+    }
 
     #[test]
     fn a_probability_outside_0_1_names_the_range() {
