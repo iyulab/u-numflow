@@ -1,0 +1,50 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>UNumflow</RootNamespace>
+    <AssemblyName>UNumflow</AssemblyName>
+
+    <!-- NuGet Package Metadata -->
+    <PackageId>UNumflow</PackageId>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <Version>0.1.0</Version>
+    <Authors>iyulab</Authors>
+    <Company>iyulab</Company>
+    <Product>UNumflow</Product>
+    <Description>Probability distributions (CDF, quantile, seeded sampling) and interval sets with an overlap-safe measure — Rust engine with C# bindings.</Description>
+    <PackageTags>statistics;probability;distributions;sampling;weibull;chi-squared;intervals;ffi</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/iyulab/u-numflow</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/iyulab/u-numflow</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+
+    <!-- Build Configuration -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <IsPackable>true</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="../README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Native library bundling (4 platforms) -->
+    <None Include="runtimes/win-x64/native/u_numflow.dll"
+          Pack="true" PackagePath="runtimes/win-x64/native/"
+          Condition="Exists('runtimes/win-x64/native/u_numflow.dll')" />
+    <None Include="runtimes/linux-x64/native/libu_numflow.so"
+          Pack="true" PackagePath="runtimes/linux-x64/native/"
+          Condition="Exists('runtimes/linux-x64/native/libu_numflow.so')" />
+    <None Include="runtimes/osx-x64/native/libu_numflow.dylib"
+          Pack="true" PackagePath="runtimes/osx-x64/native/"
+          Condition="Exists('runtimes/osx-x64/native/libu_numflow.dylib')" />
+    <None Include="runtimes/osx-arm64/native/libu_numflow.dylib"
+          Pack="true" PackagePath="runtimes/osx-arm64/native/"
+          Condition="Exists('runtimes/osx-arm64/native/libu_numflow.dylib')" />
+  </ItemGroup>
+
+</Project>

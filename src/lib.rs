@@ -33,9 +33,11 @@ pub mod special;
 pub mod stats;
 pub mod transforms;
 
+#[cfg(feature = "ffi")]
+pub mod ffi;
 #[cfg(feature = "wasm")]
 pub mod wasm;
-#[cfg(feature = "wasm")]
+#[cfg(any(feature = "wasm", feature = "ffi"))]
 mod wire;
 
 // The README's Rust examples are the first code most users copy, so they are

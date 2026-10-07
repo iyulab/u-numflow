@@ -108,6 +108,17 @@ cargo test
 
 MIT License — see [LICENSE](LICENSE).
 
+## .NET (NuGet)
+
+```bash
+dotnet add package UNumflow
+```
+
+The distributions (CDF, quantile, moments, seeded sampling) and interval sets,
+backed by this crate through its C ABI (the `ffi` feature) — see
+[bindings/csharp/README.md](bindings/csharp/README.md). Refusals carry the same
+`code` and fields as the WebAssembly binding's.
+
 ## npm (WebAssembly)
 
 ```bash

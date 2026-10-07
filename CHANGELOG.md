@@ -30,6 +30,12 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
   specification (declared `DistributionSpec`). An unknown `kind` throws
   `unknown_option` with `expected`; a bad parameter throws with its path
   (`distribution.sigma`).
+- C ABI behind the `ffi` feature (JSON in, JSON out): distribution moments,
+  CDF, quantile and seeded sampling over the same `{ kind, ...parameters }`
+  specification, and the interval-set operations. A refusal is a non-zero
+  status with `{"error", "code", ...fields}` — the same `code` and fields as
+  the WebAssembly binding's.
+- WebAssembly: `distribution_moments(distribution)` → `{ mean, variance }`.
 - `collections::IntervalSet<T>` — a finite union of half-open intervals
   `[start, end)`, always kept sorted, disjoint and with touching pieces merged:
   `from_intervals`, `insert`, `union`, `intersection`, `difference`, `clip`,

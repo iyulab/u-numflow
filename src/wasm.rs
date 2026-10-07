@@ -16,6 +16,7 @@
 //! - `t_distribution_cdf(t, df)` / `t_distribution_quantile(p, df)` → `f64` (throw on an invalid argument)
 //! - `f_distribution_cdf(x, df1, df2)` / `f_distribution_quantile(p, df1, df2)` → `f64` (same)
 //! - `chi_squared_cdf(x, k)` / `chi_squared_quantile(p, k)` → `f64` (same)
+//! - `distribution_moments(distribution)` → `{ mean, variance }`
 //! - `distribution_cdf(distribution, x)` · `distribution_quantile(distribution, p)` →
 //!   `f64`; `distribution_sample(distribution, n, seed)` → `Float64Array`
 //! - `interval_normalize(intervals)` · `interval_union(a, b)` ·
@@ -37,50 +38,10 @@
 use wasm_bindgen::prelude::*;
 
 use crate::transforms::TransformError;
-
-// ── Refusals ──────────────────────────────────────────────────────────────
-
-/// A value carried on a refusal.
-#[derive(Debug, Clone, PartialEq)]
-enum Field {
-    Num(f64),
-    Str(&'static str),
-    /// A path built at run time, such as `a[3]`.
-    Path(String),
-    Null,
-}
-
-/// A refusal on its way to JavaScript: the text for `Error.message`, a stable
-/// `code`, and the values behind it.
-#[derive(Debug, Clone, PartialEq)]
-struct Refusal {
-    code: &'static str,
-    message: String,
-    fields: Vec<(&'static str, Field)>,
-}
-
-impl Refusal {
-    /// An argument outside the range the function accepts; `max` is `None`
-    /// when the range is open above.
-    fn out_of_range(
-        parameter: &'static str,
-        min: f64,
-        max: Option<f64>,
-        got: f64,
-        message: String,
-    ) -> Self {
-        Refusal {
-            code: "parameter_out_of_range",
-            message,
-            fields: vec![
-                ("parameter", Field::Str(parameter)),
-                ("min", Field::Num(min)),
-                ("max", max.map_or(Field::Null, Field::Num)),
-                ("got", Field::Num(got)),
-            ],
-        }
-    }
-}
+use crate::wire::{
+    check_finite, check_kind, check_probability, distribution_refusal, interval_set_from, whole,
+    Field, Refusal,
+};
 
 /// One element of a JS number array, as found.
 #[derive(Debug, Clone, PartialEq)]
@@ -356,22 +317,6 @@ pub fn rfft(
 // the JS boundary a NaN critical value draws nothing and raises nothing, so
 // these wrappers refuse such arguments instead and name the one that failed.
 
-/// `p` strictly inside `(0, 1)`: `parameter_out_of_range` with `min` 0 and
-/// `max` 1 -- both excluded, as the message says.
-fn check_probability(p: f64) -> Result<(), Refusal> {
-    if p.is_finite() && p > 0.0 && p < 1.0 {
-        Ok(())
-    } else {
-        Err(Refusal::out_of_range(
-            "p",
-            0.0,
-            Some(1.0),
-            p,
-            format!("p must be strictly between 0 and 1, got {p}"),
-        ))
-    }
-}
-
 /// Degrees of freedom: a finite number above 0 (`min` 0, excluded).
 fn check_df(name: &'static str, df: f64) -> Result<(), Refusal> {
     if df.is_finite() && df > 0.0 {
@@ -384,18 +329,6 @@ fn check_df(name: &'static str, df: f64) -> Result<(), Refusal> {
             df,
             format!("{name} must be a finite number > 0, got {df}"),
         ))
-    }
-}
-
-fn check_finite(name: &'static str, x: f64) -> Result<(), Refusal> {
-    if x.is_nan() {
-        Err(Refusal {
-            code: "value_not_finite",
-            message: format!("{name} must be a number, got NaN"),
-            fields: vec![("parameter", Field::Str(name))],
-        })
-    } else {
-        Ok(())
     }
 }
 
@@ -524,20 +457,7 @@ fn read_distribution(value: &JsValue) -> Result<crate::wire::Distribution, Refus
             "{P}.kind: expected a string naming the distribution"
         )));
     };
-    if !crate::wire::KINDS.contains(&kind.as_str()) {
-        return Err(Refusal {
-            code: "unknown_option",
-            message: format!(
-                "{P}.kind: unknown distribution \"{kind}\"; expected one of {}",
-                crate::wire::KINDS.join(", ")
-            ),
-            fields: vec![
-                ("parameter", Field::Str("distribution.kind")),
-                ("got", Field::Path(kind)),
-                ("expected", Field::Path(crate::wire::KINDS.join(", "))),
-            ],
-        });
-    }
+    check_kind(&kind)?;
     if let Some((path, n)) = find_non_finite(value, P) {
         return Err(Refusal {
             code: "value_not_finite",
@@ -551,47 +471,35 @@ fn read_distribution(value: &JsValue) -> Result<crate::wire::Distribution, Refus
             let text = e.to_string();
             malformed(format!("{P}: {}", text.trim_start_matches("Error: ")))
         })?;
-    spec.build().map_err(|e| {
-        use crate::distributions::DistributionError as E;
-        let message = format!("{P}: {e}");
-        match e {
-            E::NotFinite { parameter } => Refusal {
-                code: "value_not_finite",
-                message,
-                fields: vec![("parameter", Field::Path(format!("{P}.{parameter}")))],
-            },
-            E::NotPositive { parameter, got } => Refusal {
-                code: "parameter_out_of_range",
-                message,
-                fields: vec![
-                    ("parameter", Field::Path(format!("{P}.{parameter}"))),
-                    ("min", Field::Num(0.0)),
-                    ("max", Field::Null),
-                    ("got", Field::Num(got)),
-                ],
-            },
-            E::Unordered { parameter, .. } => Refusal {
-                code: "invalid_option",
-                message,
-                fields: vec![("parameter", Field::Path(format!("{P}.{parameter}")))],
-            },
-        }
-    })
+    spec.build().map_err(distribution_refusal)
 }
 
-/// A whole number in `[0, max]`, refused as `parameter_out_of_range` otherwise.
-fn whole(parameter: &'static str, x: f64, max: f64) -> Result<f64, Refusal> {
-    if x.is_finite() && x >= 0.0 && x <= max && x.fract() == 0.0 {
-        Ok(x)
-    } else {
-        Err(Refusal::out_of_range(
-            parameter,
-            0.0,
-            Some(max),
-            x,
-            format!("{parameter} must be a whole number in [0, {max}], got {x}"),
-        ))
-    }
+/// Mean and variance of a distribution.
+#[derive(serde::Serialize, tsify::Tsify)]
+struct MomentsDto {
+    mean: f64,
+    variance: f64,
+}
+
+/// Mean and variance of `distribution` — also the way to check a
+/// specification before using it.
+///
+/// # Errors
+/// As [`distribution_cdf`] for `distribution`.
+#[wasm_bindgen(unchecked_return_type = "MomentsDto")]
+pub fn distribution_moments(
+    #[wasm_bindgen(unchecked_param_type = "DistributionSpec")] distribution: JsValue,
+) -> Result<JsValue, JsValue> {
+    let d = read_distribution(&distribution)?;
+    let dto = MomentsDto {
+        mean: d.mean(),
+        variance: d.variance(),
+    };
+    Ok(serde_wasm_bindgen::to_value(&dto).map_err(|e| Refusal {
+        code: "internal",
+        message: e.to_string(),
+        fields: Vec::new(),
+    })?)
 }
 
 /// `P(X ≤ x)` for the distribution `{ kind, ...parameters }`.
@@ -649,53 +557,6 @@ pub fn distribution_sample(
 }
 
 // ── Interval sets ─────────────────────────────────────────────────────────
-
-/// The interval set given by `rows` (each `[start, end]`, already read as
-/// finite numbers): a row that is not a pair is `malformed_input` at
-/// `parameter[i]`, a reversed pair `reversed_interval` with `parameter` and
-/// `index`.
-///
-/// Kept apart from the `JsValue` walk so it runs off `wasm32` in tests.
-fn interval_set_from(
-    parameter: &'static str,
-    rows: Vec<Vec<f64>>,
-) -> Result<crate::collections::IntervalSet<f64>, Refusal> {
-    let mut pairs = Vec::with_capacity(rows.len());
-    for (i, row) in rows.into_iter().enumerate() {
-        match row[..] {
-            [start, end] => pairs.push((start, end)),
-            _ => {
-                return Err(Refusal {
-                    code: "malformed_input",
-                    message: format!(
-                        "{parameter}[{i}]: expected [start, end], got {} numbers",
-                        row.len()
-                    ),
-                    fields: vec![("parameter", Field::Path(format!("{parameter}[{i}]")))],
-                })
-            }
-        }
-    }
-    crate::collections::IntervalSet::from_intervals(pairs).map_err(|e| match e {
-        crate::collections::IntervalError::Reversed { index } => Refusal {
-            code: "reversed_interval",
-            message: format!("{parameter}[{index}]: start is after end"),
-            fields: vec![
-                ("parameter", Field::Str(parameter)),
-                ("index", Field::Num(index as f64)),
-            ],
-        },
-        // Unreachable: every number was checked finite while reading.
-        crate::collections::IntervalError::NotFinite { index } => Refusal {
-            code: "value_not_finite",
-            message: format!("{parameter}[{index}]: a bound is not finite"),
-            fields: vec![
-                ("parameter", Field::Str(parameter)),
-                ("index", Field::Num(index as f64)),
-            ],
-        },
-    })
-}
 
 /// Reads a `[number, number][]` argument as sent.
 fn read_intervals(

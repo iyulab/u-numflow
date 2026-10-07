@@ -1,0 +1,199 @@
+name: NuGet Release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'bindings/csharp/UNumflow/UNumflow.csproj'
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish to NuGet.org'
+        required: false
+        default: true
+        type: boolean
+
+env:
+  CARGO_TERM_COLOR: always
+  CSPROJ_PATH: bindings/csharp/UNumflow/UNumflow.csproj
+  PACKAGE_NAME: UNumflow
+
+jobs:
+  # ── Check if version changed ──
+  check-version:
+    name: Check Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.read.outputs.version }}
+      should_publish: ${{ steps.decide.outputs.should_publish }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Read version from csproj
+        id: read
+        run: |
+          VERSION=$(grep -oPm1 '(?<=<Version>)[^<]+' ${{ env.CSPROJ_PATH }})
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Current version: $VERSION"
+
+      - name: Decide whether to publish
+        id: decide
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "should_publish=true" >> "$GITHUB_OUTPUT"
+            echo "Manual trigger — will publish"
+          else
+            VERSION="${{ steps.read.outputs.version }}"
+            PKG_LOWER=$(echo "${{ env.PACKAGE_NAME }}" | tr '[:upper:]' '[:lower:]')
+            HTTP=$(curl -s -o /dev/null -w '%{http_code}' "https://api.nuget.org/v3-flatcontainer/${PKG_LOWER}/${VERSION}/${PKG_LOWER}.nuspec")
+            if [ "$HTTP" = "200" ]; then
+              echo "should_publish=false" >> "$GITHUB_OUTPUT"
+              echo "${{ env.PACKAGE_NAME }} ${VERSION} already on nuget.org — skipping"
+            elif [ "$HTTP" = "404" ]; then
+              echo "should_publish=true" >> "$GITHUB_OUTPUT"
+              echo "${{ env.PACKAGE_NAME }} ${VERSION} not on nuget.org (HTTP ${HTTP}) — will publish"
+            else
+              echo "::error::the registry answered HTTP ${HTTP}, so it is unknown whether this version is published; re-run once the registry responds"
+              exit 1
+            fi
+          fi
+
+  # ── Build native libraries for each platform ──
+  build-native:
+    name: Build Native (${{ matrix.rid }})
+    needs: check-version
+    if: needs.check-version.outputs.should_publish == 'true'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            rid: win-x64
+            artifact: u_numflow.dll
+          # Not ubuntu-latest: the library links against the build host's glibc,
+          # so the image decides the oldest Linux it loads on. 24.04 = glibc 2.39.
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            rid: linux-x64
+            artifact: libu_numflow.so
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            rid: osx-x64
+            artifact: libu_numflow.dylib
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            rid: osx-arm64
+            artifact: libu_numflow.dylib
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+
+      - uses: dtolnay/rust-toolchain@d1031067263f94b142dd6c0ce24c5eb9d02d52a0 # master
+        with:
+          toolchain: stable
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          save-if: false
+
+      - name: Build release
+        run: cargo build --release --features ffi --target ${{ matrix.target }}
+
+      - name: Upload native artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: native-${{ matrix.rid }}
+          path: target/${{ matrix.target }}/release/${{ matrix.artifact }}
+          if-no-files-found: error
+          retention-days: 1
+
+  # ── Pack & Publish NuGet ──
+  pack-and-publish:
+    name: Pack & Publish NuGet
+    needs: [check-version, build-native]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Download win-x64 artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: native-win-x64
+          path: bindings/csharp/UNumflow/runtimes/win-x64/native/
+
+      - name: Download linux-x64 artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: native-linux-x64
+          path: bindings/csharp/UNumflow/runtimes/linux-x64/native/
+
+      - name: Download osx-x64 artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: native-osx-x64
+          path: bindings/csharp/UNumflow/runtimes/osx-x64/native/
+
+      - name: Download osx-arm64 artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: native-osx-arm64
+          path: bindings/csharp/UNumflow/runtimes/osx-arm64/native/
+
+      - name: Verify native libraries
+        run: |
+          echo "=== Native libraries ==="
+          find bindings/csharp/UNumflow/runtimes -type f
+          echo "=== Sizes ==="
+          find bindings/csharp/UNumflow/runtimes -type f -exec ls -lh {} \;
+
+      - name: Pack NuGet
+        run: |
+          dotnet pack ${{ env.CSPROJ_PATH }} -c Release -o ./nupkg
+
+      - name: Inspect package
+        run: |
+          VERSION=${{ needs.check-version.outputs.version }}
+          echo "=== Package contents ==="
+          unzip -l ./nupkg/${{ env.PACKAGE_NAME }}.${VERSION}.nupkg | grep -E "runtimes|build|lib"
+
+      - name: Upload NuGet package artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: nuget-package
+          path: ./nupkg/*.nupkg
+          retention-days: 7
+
+      - name: Publish to NuGet.org
+        if: github.event_name == 'push' || inputs.publish != false
+        run: |
+          VERSION=${{ needs.check-version.outputs.version }}
+          dotnet nuget push ./nupkg/${{ env.PACKAGE_NAME }}.${VERSION}.nupkg \
+            --api-key ${{ secrets.NUGET_API_KEY }} \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate
+
+  # The artifacts above only carry files between jobs. Once the package is on
+  # NuGet they are storage nobody reads, so they go as soon as it is published.
+  # A run that does not publish keeps them for inspection until they expire.
+  # This job alone gets `actions: write`; the publishing job keeps its own scope.
+  cleanup-artifacts:
+    name: Delete intermediate artifacts
+    needs: pack-and-publish
+    if: github.event_name == 'push' || inputs.publish != false
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - uses: geekyeggo/delete-artifact@176a747ab7e287e3ff4787bf8a148716375ca118 # v6.0.0
+        with:
+          name: |
+            native-*
+            nuget-package

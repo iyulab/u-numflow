@@ -198,6 +198,30 @@ jobs:
       - name: Compile the binding for its real target
         run: cargo check --features wasm --target wasm32-unknown-unknown
 
+  ffi:
+    name: C FFI Binding
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@d1031067263f94b142dd6c0ce24c5eb9d02d52a0 # master
+        with:
+          toolchain: stable
+          components: clippy
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      # `src/ffi.rs` is behind the `ffi` feature, so no other job compiles it.
+      # Its wire-contract tests drive the exported symbols the way a C caller does.
+      - name: Binding contract tests
+        run: cargo test --features ffi --lib
+      - run: cargo clippy --features ffi --all-targets -- -D warnings
+      - name: Setup .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build the C# binding
+        run: dotnet build bindings/csharp/UNumflow/UNumflow.csproj -c Release
+
   unused-deps:
     name: Unused Dependencies
     runs-on: ubuntu-latest

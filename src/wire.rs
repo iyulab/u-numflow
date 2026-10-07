@@ -3,8 +3,6 @@
 //!
 //! Kept apart from any one binding so every transport reads the same contract.
 
-#![cfg(feature = "wasm")]
-
 use serde::Deserialize;
 
 use crate::distributions::{
@@ -25,6 +23,190 @@ pub(crate) const KINDS: &[&str] = &[
     "beta",
     "chi_squared",
 ];
+
+// ── Refusals ──────────────────────────────────────────────────────────────
+
+/// A value carried on a refusal.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum Field {
+    Num(f64),
+    Str(&'static str),
+    /// A path built at run time, such as `a[3]`.
+    Path(String),
+    Null,
+}
+
+/// A refusal on its way to a caller: readable text, a stable `code`, and the
+/// values behind it. WebAssembly throws it as an `Error` with those properties;
+/// the C ABI writes it as `{"error": text, "code": …, …fields}`.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Refusal {
+    pub(crate) code: &'static str,
+    pub(crate) message: String,
+    pub(crate) fields: Vec<(&'static str, Field)>,
+}
+
+impl Refusal {
+    /// An argument outside the range the function accepts; `max` is `None`
+    /// when the range is open above.
+    pub(crate) fn out_of_range(
+        parameter: &'static str,
+        min: f64,
+        max: Option<f64>,
+        got: f64,
+        message: String,
+    ) -> Self {
+        Refusal {
+            code: "parameter_out_of_range",
+            message,
+            fields: vec![
+                ("parameter", Field::Str(parameter)),
+                ("min", Field::Num(min)),
+                ("max", max.map_or(Field::Null, Field::Num)),
+                ("got", Field::Num(got)),
+            ],
+        }
+    }
+}
+
+/// `p` strictly inside `(0, 1)`: `parameter_out_of_range` with `min` 0 and
+/// `max` 1 -- both excluded, as the message says.
+pub(crate) fn check_probability(p: f64) -> Result<(), Refusal> {
+    if p.is_finite() && p > 0.0 && p < 1.0 {
+        Ok(())
+    } else {
+        Err(Refusal::out_of_range(
+            "p",
+            0.0,
+            Some(1.0),
+            p,
+            format!("p must be strictly between 0 and 1, got {p}"),
+        ))
+    }
+}
+
+/// A number that is not NaN (±∞ is a valid argument to a CDF).
+pub(crate) fn check_finite(name: &'static str, x: f64) -> Result<(), Refusal> {
+    if x.is_nan() {
+        Err(Refusal {
+            code: "value_not_finite",
+            message: format!("{name} must be a number, got NaN"),
+            fields: vec![("parameter", Field::Str(name))],
+        })
+    } else {
+        Ok(())
+    }
+}
+
+/// A whole number in `[0, max]`, refused as `parameter_out_of_range` otherwise.
+pub(crate) fn whole(parameter: &'static str, x: f64, max: f64) -> Result<f64, Refusal> {
+    if x.is_finite() && x >= 0.0 && x <= max && x.fract() == 0.0 {
+        Ok(x)
+    } else {
+        Err(Refusal::out_of_range(
+            parameter,
+            0.0,
+            Some(max),
+            x,
+            format!("{parameter} must be a whole number in [0, {max}], got {x}"),
+        ))
+    }
+}
+
+/// The interval set given by `rows` (each `[start, end]`, already read as
+/// finite numbers): a row that is not a pair is `malformed_input` at
+/// `parameter[i]`, a reversed pair `reversed_interval` with `parameter` and
+/// `index`.
+pub(crate) fn interval_set_from(
+    parameter: &'static str,
+    rows: Vec<Vec<f64>>,
+) -> Result<crate::collections::IntervalSet<f64>, Refusal> {
+    let mut pairs = Vec::with_capacity(rows.len());
+    for (i, row) in rows.into_iter().enumerate() {
+        match row[..] {
+            [start, end] => pairs.push((start, end)),
+            _ => {
+                return Err(Refusal {
+                    code: "malformed_input",
+                    message: format!(
+                        "{parameter}[{i}]: expected [start, end], got {} numbers",
+                        row.len()
+                    ),
+                    fields: vec![("parameter", Field::Path(format!("{parameter}[{i}]")))],
+                })
+            }
+        }
+    }
+    crate::collections::IntervalSet::from_intervals(pairs).map_err(|e| match e {
+        crate::collections::IntervalError::Reversed { index } => Refusal {
+            code: "reversed_interval",
+            message: format!("{parameter}[{index}]: start is after end"),
+            fields: vec![
+                ("parameter", Field::Str(parameter)),
+                ("index", Field::Num(index as f64)),
+            ],
+        },
+        // Unreachable: every number was checked finite while reading.
+        crate::collections::IntervalError::NotFinite { index } => Refusal {
+            code: "value_not_finite",
+            message: format!("{parameter}[{index}]: a bound is not finite"),
+            fields: vec![
+                ("parameter", Field::Str(parameter)),
+                ("index", Field::Num(index as f64)),
+            ],
+        },
+    })
+}
+
+/// `kind` names a distribution this crate has, or `unknown_option` listing them.
+pub(crate) fn check_kind(kind: &str) -> Result<(), Refusal> {
+    if KINDS.contains(&kind) {
+        return Ok(());
+    }
+    Err(Refusal {
+        code: "unknown_option",
+        message: format!(
+            "distribution.kind: unknown distribution \"{kind}\"; expected one of {}",
+            KINDS.join(", ")
+        ),
+        fields: vec![
+            ("parameter", Field::Str("distribution.kind")),
+            ("got", Field::Path(kind.to_string())),
+            ("expected", Field::Path(KINDS.join(", "))),
+        ],
+    })
+}
+
+/// A distribution constructor's refusal, with the parameter's path
+/// (`distribution.sigma`).
+pub(crate) fn distribution_refusal(e: DistributionError) -> Refusal {
+    const P: &str = "distribution";
+    let message = format!("{P}: {e}");
+    match e {
+        DistributionError::NotFinite { parameter } => Refusal {
+            code: "value_not_finite",
+            message,
+            fields: vec![("parameter", Field::Path(format!("{P}.{parameter}")))],
+        },
+        DistributionError::NotPositive { parameter, got } => Refusal {
+            code: "parameter_out_of_range",
+            message,
+            fields: vec![
+                ("parameter", Field::Path(format!("{P}.{parameter}"))),
+                ("min", Field::Num(0.0)),
+                ("max", Field::Null),
+                ("got", Field::Num(got)),
+            ],
+        },
+        DistributionError::Unordered { parameter, .. } => Refusal {
+            code: "invalid_option",
+            message,
+            fields: vec![("parameter", Field::Path(format!("{P}.{parameter}")))],
+        },
+    }
+}
+
+// ── Distributions ─────────────────────────────────────────────────────────
 
 /// A distribution named by `kind`, with its parameters.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -119,6 +301,16 @@ macro_rules! each {
 }
 
 impl Distribution {
+    /// The mean.
+    pub(crate) fn mean(&self) -> f64 {
+        each!(self, d => d.mean())
+    }
+
+    /// The variance.
+    pub(crate) fn variance(&self) -> f64 {
+        each!(self, d => d.variance())
+    }
+
     /// `P(X ≤ x)`.
     pub(crate) fn cdf(&self, x: f64) -> f64 {
         each!(self, d => d.cdf(x))
