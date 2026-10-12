@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Maintained from 0.2.1 onward; earlier entries list release dates only (see git history).
 
+## [Unreleased]
+
+### Changed
+
+- **Breaking:** `parameter_out_of_range` refusals (WebAssembly `Error` properties and
+  the C error body) report open bounds as `exclusive_min` / `exclusive_max`. `min` and
+  `max` now carry only inclusive bounds and stay present, `null` on an open or
+  unbounded end; the `exclusive_*` keys appear only when that end is open. A
+  distribution parameter that must be `> 0` and a degrees of freedom `> 0` report
+  `min: null, exclusive_min: 0, max: null` (previously `min: 0`); a probability
+  outside (0, 1) reports `exclusive_min: 0, exclusive_max: 1` with `min` and `max`
+  `null` (previously `min: 0, max: 1`). Closed ranges (`n`, `seed`) are unchanged.
+
 ## [0.10.0] - 2026-10-07
 
 The .NET client is `UNumflow` 0.2.0.

@@ -218,13 +218,14 @@ const { t_distribution_quantile } = require("@iyulab/u-numflow");
 try {
   t_distribution_quantile(1.5, 10);
 } catch (err) {
-  console.log(err.code, err.parameter, err.min, err.max, err.got); // parameter_out_of_range p 0 1 1.5
+  console.log(err.code, err.parameter, err.exclusive_min, err.exclusive_max, err.got);
+  // parameter_out_of_range p 0 1 1.5
 }
 ```
 
 | `code` | Fields | Meaning |
 |---|---|---|
-| `parameter_out_of_range` | `parameter`, `min`, `max` (or `null`), `got` | `p` not strictly inside (0, 1), or a degrees of freedom that is not a finite number `> 0` (both bounds excluded); a distribution parameter that must be `> 0` (`parameter` is its path, e.g. `distribution.sigma`); `n` or `seed` not a whole number in range |
+| `parameter_out_of_range` | `parameter`, `min`, `max`, `got`; `exclusive_min` / `exclusive_max` on an open end | `p` not strictly inside (0, 1) (`exclusive_min` 0, `exclusive_max` 1), or a degrees of freedom that is not a finite number `> 0` (`exclusive_min` 0); a distribution parameter that must be `> 0` (`exclusive_min` 0; `parameter` is its path, e.g. `distribution.sigma`); `n` or `seed` not a whole number in range (`min`, `max`) |
 | `unknown_option` | `parameter`, `got`, `expected` | A `distribution.kind` the crate does not have |
 | `invalid_option` | `parameter` | Distribution parameters out of order: `min < max`, `min ≤ mode ≤ max` |
 | `malformed_input` | `parameter`, `index` (or absent) | A `data` argument that is not an array or `Float64Array`, or an element that is not a number; a `distribution` that is not an object with a string `kind`, lacks a parameter or has one its kind does not take; an interval row that is not two numbers (`parameter` is its path, e.g. `a[2]`) |
@@ -235,6 +236,10 @@ try {
 | `insufficient_data` | `parameter`, `min`, `got` | Fewer values than the function needs (`std_dev`/`variance` 2, Box-Cox 2) |
 | `invalid_transform` | — | A Box-Cox result that is not finite |
 | `invalid_lambda_range` | `parameter`, `min`, `max` | `estimate_lambda` bounds that are not finite with `lambda_min < lambda_max` (`min`/`max` are the bounds given) |
+
+In `parameter_out_of_range`, `min` and `max` are inclusive bounds and are always
+present — `null` when that end is unbounded or open. An open (exclusive) end is
+`exclusive_min` / `exclusive_max`, present only when the bound is open.
 
 ### TypeScript
 

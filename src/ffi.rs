@@ -456,10 +456,18 @@ mod tests {
             (s, b["code"].as_str()),
             (-3, Some("parameter_out_of_range"))
         );
-        assert_eq!(b["parameter"], "distribution.sigma");
+        // `sigma > 0`: the open end is `exclusive_min`, `min` and `max` are null.
         assert_eq!(
-            (b["min"].as_f64(), b["max"].is_null(), b["got"].as_f64()),
-            (Some(0.0), true, Some(-1.0))
+            b,
+            json!({
+                "error": b["error"],
+                "code": "parameter_out_of_range",
+                "parameter": "distribution.sigma",
+                "min": null,
+                "exclusive_min": 0.0,
+                "max": null,
+                "got": -1.0,
+            })
         );
 
         let (s, b) = call(
@@ -496,12 +504,29 @@ mod tests {
             (s, b["code"].as_str(), b["parameter"].as_str()),
             (-3, Some("parameter_out_of_range"), Some("p"))
         );
+        // `0 < p < 1`: both ends open.
+        assert_eq!(
+            (
+                b["min"].is_null(),
+                b["exclusive_min"].as_f64(),
+                b["max"].is_null(),
+                b["exclusive_max"].as_f64(),
+                b["got"].as_f64()
+            ),
+            (true, Some(0.0), true, Some(1.0), Some(1.0))
+        );
 
         let (s, b) = call(
             unumflow_distribution_sample,
             r#"{"distribution": {"kind": "normal", "mu": 0, "sigma": 1}, "n": 2.5, "seed": 1}"#,
         );
         assert_eq!((s, b["parameter"].as_str()), (-3, Some("n")));
+        // A closed range keeps its shape: no `exclusive_*` keys.
+        assert_eq!(
+            (b["min"].as_f64(), b["max"].as_f64()),
+            (Some(0.0), Some(u32::MAX as f64))
+        );
+        assert!(b.get("exclusive_min").is_none() && b.get("exclusive_max").is_none());
 
         let (s, b) = call(unumflow_distribution_cdf, "not json");
         assert_eq!((s, b["code"].as_str()), (-2, Some("malformed_input")));

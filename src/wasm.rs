@@ -40,7 +40,7 @@ use wasm_bindgen::prelude::*;
 use crate::transforms::TransformError;
 use crate::wire::{
     check_finite, check_kind, check_probability, distribution_refusal, interval_set_from, whole,
-    Field, Refusal,
+    Bound, Field, Refusal,
 };
 
 /// One element of a JS number array, as found.
@@ -342,15 +342,15 @@ pub fn rfft(
 // the JS boundary a NaN critical value draws nothing and raises nothing, so
 // these wrappers refuse such arguments instead and name the one that failed.
 
-/// Degrees of freedom: a finite number above 0 (`min` 0, excluded).
+/// Degrees of freedom: a finite number above 0 (`exclusive_min` 0).
 fn check_df(name: &'static str, df: f64) -> Result<(), Refusal> {
     if df.is_finite() && df > 0.0 {
         Ok(())
     } else {
         Err(Refusal::out_of_range(
-            name,
-            0.0,
-            None,
+            Field::Str(name),
+            Bound::Open(0.0),
+            Bound::Unbounded,
             df,
             format!("{name} must be a finite number > 0, got {df}"),
         ))
@@ -726,8 +726,10 @@ mod tests {
             r.fields,
             vec![
                 ("parameter", Field::Str("p")),
-                ("min", Field::Num(0.0)),
-                ("max", Field::Num(1.0)),
+                ("min", Field::Null),
+                ("exclusive_min", Field::Num(0.0)),
+                ("max", Field::Null),
+                ("exclusive_max", Field::Num(1.0)),
                 ("got", Field::Num(1.5)),
             ]
         );
@@ -735,10 +737,32 @@ mod tests {
     }
 
     #[test]
-    fn degrees_of_freedom_are_open_above() {
+    fn degrees_of_freedom_exclude_zero_and_are_open_above() {
         let r = check_df("df2", 0.0).expect_err("zero");
-        assert_eq!(r.fields[0], ("parameter", Field::Str("df2")));
-        assert_eq!(r.fields[2], ("max", Field::Null));
+        assert_eq!(
+            r.fields,
+            vec![
+                ("parameter", Field::Str("df2")),
+                ("min", Field::Null),
+                ("exclusive_min", Field::Num(0.0)),
+                ("max", Field::Null),
+                ("got", Field::Num(0.0)),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_closed_range_carries_no_exclusive_bounds() {
+        let r = whole("seed", -1.0, 10.0).expect_err("negative");
+        assert_eq!(
+            r.fields,
+            vec![
+                ("parameter", Field::Str("seed")),
+                ("min", Field::Num(0.0)),
+                ("max", Field::Num(10.0)),
+                ("got", Field::Num(-1.0)),
+            ]
+        );
     }
 
     #[test]

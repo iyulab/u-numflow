@@ -55,19 +55,23 @@ try
 catch (NumflowException e)
 {
     // e.Reason == "parameter_out_of_range"
-    // e.Details: { "parameter": "distribution.sigma", "min": 0, "max": null, "got": -1, ... }
+    // e.Details: { "parameter": "distribution.sigma", "min": null, "exclusive_min": 0, "max": null, "got": -1, ... }
 }
 ```
 
 | `Reason` | Details | Meaning |
 |---|---|---|
-| `parameter_out_of_range` | `parameter`, `min`, `max` (or `null`), `got` | A distribution parameter that must be `> 0`; `p` not strictly inside (0, 1); a `seed` outside `[0, 2⁵³]` |
+| `parameter_out_of_range` | `parameter`, `min`, `max`, `got`; `exclusive_min` / `exclusive_max` on an open end | A distribution parameter that must be `> 0` (`exclusive_min` 0); `p` not strictly inside (0, 1) (`exclusive_min` 0, `exclusive_max` 1); a `seed` outside `[0, 2⁵³]` (`min`, `max`) |
 | `invalid_option` | `parameter` | Parameters out of order: `min < max`, `min ≤ mode ≤ max` |
 | `value_not_finite` | `parameter`, `index` | A NaN or infinite parameter or interval bound |
 | `reversed_interval` | `parameter`, `index` | An interval with start > end — refused, not swapped |
 | `unknown_option` | `parameter`, `got`, `expected` | A distribution kind the engine does not have |
 | `malformed_input` | `parameter` | A request the engine could not read |
 | `internal` | — | An engine fault |
+
+In `parameter_out_of_range`, `min` and `max` are inclusive bounds and are always
+present — `null` when that end is unbounded or open. An open (exclusive) end is
+`exclusive_min` / `exclusive_max`, present only when the bound is open.
 
 ## Platforms
 

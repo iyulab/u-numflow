@@ -46,39 +46,69 @@ pub(crate) struct Refusal {
     pub(crate) fields: Vec<(&'static str, Field)>,
 }
 
-impl Refusal {
-    /// An argument outside the range the function accepts; `max` is `None`
-    /// when the range is open above.
-    pub(crate) fn out_of_range(
-        parameter: &'static str,
-        min: f64,
-        max: Option<f64>,
-        got: f64,
-        message: String,
-    ) -> Self {
-        Refusal {
-            code: "parameter_out_of_range",
-            message,
-            fields: vec![
-                ("parameter", Field::Str(parameter)),
-                ("min", Field::Num(min)),
-                ("max", max.map_or(Field::Null, Field::Num)),
-                ("got", Field::Num(got)),
-            ],
+/// One end of the range an argument must fall in.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum Bound {
+    /// The end value is accepted: reported as `min` / `max`.
+    Closed(f64),
+    /// The end value itself is refused: reported as `exclusive_min` /
+    /// `exclusive_max`, with `min` / `max` `null`.
+    Open(f64),
+    /// No limit on this side: `min` / `max` `null`.
+    Unbounded,
+}
+
+impl Bound {
+    /// The `min`/`max` value and, for an open end, the `exclusive_*` value.
+    fn split(self) -> (Field, Option<f64>) {
+        match self {
+            Bound::Closed(v) => (Field::Num(v), None),
+            Bound::Open(v) => (Field::Null, Some(v)),
+            Bound::Unbounded => (Field::Null, None),
         }
     }
 }
 
-/// `p` strictly inside `(0, 1)`: `parameter_out_of_range` with `min` 0 and
-/// `max` 1 -- both excluded, as the message says.
+impl Refusal {
+    /// An argument outside the range the function accepts. `min` and `max`
+    /// are always present (`null` unless that end is closed); an open end
+    /// adds `exclusive_min` / `exclusive_max`.
+    pub(crate) fn out_of_range(
+        parameter: Field,
+        low: Bound,
+        high: Bound,
+        got: f64,
+        message: String,
+    ) -> Self {
+        let (min, exclusive_min) = low.split();
+        let (max, exclusive_max) = high.split();
+        let mut fields = vec![("parameter", parameter), ("min", min)];
+        if let Some(v) = exclusive_min {
+            fields.push(("exclusive_min", Field::Num(v)));
+        }
+        fields.push(("max", max));
+        if let Some(v) = exclusive_max {
+            fields.push(("exclusive_max", Field::Num(v)));
+        }
+        fields.push(("got", Field::Num(got)));
+        Refusal {
+            code: "parameter_out_of_range",
+            message,
+            fields,
+        }
+    }
+}
+
+/// `p` strictly inside `(0, 1)`: `parameter_out_of_range` with
+/// `exclusive_min` 0 and `exclusive_max` 1, as the message says.
 pub(crate) fn check_probability(p: f64) -> Result<(), Refusal> {
     if p.is_finite() && p > 0.0 && p < 1.0 {
         Ok(())
     } else {
         Err(Refusal::out_of_range(
-            "p",
-            0.0,
-            Some(1.0),
+            Field::Str("p"),
+            Bound::Open(0.0),
+            Bound::Open(1.0),
             p,
             format!("p must be strictly between 0 and 1, got {p}"),
         ))
@@ -104,9 +134,9 @@ pub(crate) fn whole(parameter: &'static str, x: f64, max: f64) -> Result<f64, Re
         Ok(x)
     } else {
         Err(Refusal::out_of_range(
-            parameter,
-            0.0,
-            Some(max),
+            Field::Str(parameter),
+            Bound::Closed(0.0),
+            Bound::Closed(max),
             x,
             format!("{parameter} must be a whole number in [0, {max}], got {x}"),
         ))
@@ -188,16 +218,13 @@ pub(crate) fn distribution_refusal(e: DistributionError) -> Refusal {
             message,
             fields: vec![("parameter", Field::Path(format!("{P}.{parameter}")))],
         },
-        DistributionError::NotPositive { parameter, got } => Refusal {
-            code: "parameter_out_of_range",
+        DistributionError::NotPositive { parameter, got } => Refusal::out_of_range(
+            Field::Path(format!("{P}.{parameter}")),
+            Bound::Open(0.0),
+            Bound::Unbounded,
+            got,
             message,
-            fields: vec![
-                ("parameter", Field::Path(format!("{P}.{parameter}"))),
-                ("min", Field::Num(0.0)),
-                ("max", Field::Null),
-                ("got", Field::Num(got)),
-            ],
-        },
+        ),
         DistributionError::Unordered { parameter, .. } => Refusal {
             code: "invalid_option",
             message,
@@ -377,6 +404,25 @@ mod tests {
                 parameter: "shape",
                 got: 0.0
             }
+        );
+    }
+
+    #[test]
+    fn a_parameter_that_must_be_positive_reports_an_open_lower_bound() {
+        let r = distribution_refusal(DistributionError::NotPositive {
+            parameter: "sigma",
+            got: -1.0,
+        });
+        assert_eq!(r.code, "parameter_out_of_range");
+        assert_eq!(
+            r.fields,
+            vec![
+                ("parameter", Field::Path("distribution.sigma".into())),
+                ("min", Field::Null),
+                ("exclusive_min", Field::Num(0.0)),
+                ("max", Field::Null),
+                ("got", Field::Num(-1.0)),
+            ]
         );
     }
 }

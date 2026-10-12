@@ -110,7 +110,10 @@ public class NumflowException : Exception
 
     /// <summary>
     /// The whole error body: <c>error</c>, <c>code</c> and the values behind the reason
-    /// (<c>parameter</c>, <c>index</c>, <c>min</c>, <c>max</c>, <c>got</c>, <c>expected</c>).
+    /// (<c>parameter</c>, <c>index</c>, <c>min</c>, <c>max</c>, <c>exclusive_min</c>,
+    /// <c>exclusive_max</c>, <c>got</c>, <c>expected</c>). In <c>parameter_out_of_range</c>,
+    /// <c>min</c>/<c>max</c> are inclusive bounds (<c>null</c> when that end is unbounded or
+    /// open) and <c>exclusive_min</c>/<c>exclusive_max</c> are present only for an open end.
     /// <c>null</c> when there is no body.
     /// </summary>
     public JsonElement? Details { get; }
