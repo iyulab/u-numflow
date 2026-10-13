@@ -265,6 +265,8 @@ export!(
 
 export!(
     /// `n` variates, reproducible from `seed` (a whole number in `[0, 2⁵³]`).
+    /// A fraction is `malformed_input`, a whole number out of range (a
+    /// negative one included) `parameter_out_of_range`.
     unumflow_distribution_sample,
     |text| {
         let r: DistSample = parse(text)?;
@@ -516,17 +518,51 @@ mod tests {
             (true, Some(0.0), true, Some(1.0), Some(1.0))
         );
 
+        // A negative count is a range refusal, not a shape one; a closed range
+        // keeps its shape: no `exclusive_*` keys.
+        let (s, b) = call(
+            unumflow_distribution_sample,
+            r#"{"distribution": {"kind": "normal", "mu": 0, "sigma": 1}, "n": -1, "seed": 1}"#,
+        );
+        assert_eq!(s, -3, "{b}");
+        assert_eq!(
+            b,
+            json!({
+                "error": b["error"],
+                "code": "parameter_out_of_range",
+                "parameter": "n",
+                "min": 0.0,
+                "max": u32::MAX as f64,
+                "got": -1.0,
+            })
+        );
+        let (s, b) = call(
+            unumflow_distribution_sample,
+            r#"{"distribution": {"kind": "normal", "mu": 0, "sigma": 1}, "n": 2, "seed": -1}"#,
+        );
+        assert_eq!(
+            (
+                s,
+                b["code"].as_str(),
+                b["parameter"].as_str(),
+                b["got"].as_f64()
+            ),
+            (-3, Some("parameter_out_of_range"), Some("seed"), Some(-1.0))
+        );
+        // A fraction is not a whole number: a shape refusal at its name.
         let (s, b) = call(
             unumflow_distribution_sample,
             r#"{"distribution": {"kind": "normal", "mu": 0, "sigma": 1}, "n": 2.5, "seed": 1}"#,
         );
-        assert_eq!((s, b["parameter"].as_str()), (-3, Some("n")));
-        // A closed range keeps its shape: no `exclusive_*` keys.
         assert_eq!(
-            (b["min"].as_f64(), b["max"].as_f64()),
-            (Some(0.0), Some(u32::MAX as f64))
+            b,
+            json!({
+                "error": "n must be a whole number, got 2.5",
+                "code": "malformed_input",
+                "parameter": "n",
+            })
         );
-        assert!(b.get("exclusive_min").is_none() && b.get("exclusive_max").is_none());
+        assert_eq!(s, -3);
 
         let (s, b) = call(unumflow_distribution_cdf, "not json");
         assert_eq!((s, b["code"].as_str()), (-2, Some("malformed_input")));

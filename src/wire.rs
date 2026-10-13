@@ -128,9 +128,28 @@ pub(crate) fn check_finite(name: &'static str, x: f64) -> Result<(), Refusal> {
     }
 }
 
-/// A whole number in `[0, max]`, refused as `parameter_out_of_range` otherwise.
+/// A whole number in `[0, max]`.
+///
+/// Whether the value is a whole number is a matter of its type, whether it is
+/// in range a matter of its value: NaN or ±∞ is `value_not_finite`, a fraction
+/// `malformed_input`, and a whole number outside `[0, max]` (a negative one
+/// included) `parameter_out_of_range` with `min` 0 and `max`.
 pub(crate) fn whole(parameter: &'static str, x: f64, max: f64) -> Result<f64, Refusal> {
-    if x.is_finite() && x >= 0.0 && x <= max && x.fract() == 0.0 {
+    if !x.is_finite() {
+        return Err(Refusal {
+            code: "value_not_finite",
+            message: format!("{parameter} must be a finite number, got {x}"),
+            fields: vec![("parameter", Field::Str(parameter))],
+        });
+    }
+    if x.fract() != 0.0 {
+        return Err(Refusal {
+            code: "malformed_input",
+            message: format!("{parameter} must be a whole number, got {x}"),
+            fields: vec![("parameter", Field::Str(parameter))],
+        });
+    }
+    if (0.0..=max).contains(&x) {
         Ok(x)
     } else {
         Err(Refusal::out_of_range(
@@ -138,7 +157,7 @@ pub(crate) fn whole(parameter: &'static str, x: f64, max: f64) -> Result<f64, Re
             Bound::Closed(0.0),
             Bound::Closed(max),
             x,
-            format!("{parameter} must be a whole number in [0, {max}], got {x}"),
+            format!("{parameter} must be in [0, {max}], got {x}"),
         ))
     }
 }

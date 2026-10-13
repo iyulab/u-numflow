@@ -18,6 +18,12 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
   `min: null, exclusive_min: 0, max: null` (previously `min: 0`); a probability
   outside (0, 1) reports `exclusive_min: 0, exclusive_max: 1` with `min` and `max`
   `null` (previously `min: 0, max: 1`). Closed ranges (`n`, `seed`) are unchanged.
+- **Breaking:** `distribution_sample` (WebAssembly and C ABI) tells a count that is not
+  a whole number apart from one out of range. `n` or `seed` with a fraction (`2.5`) is
+  `malformed_input` with `parameter` ("must be a whole number"), previously
+  `parameter_out_of_range`; NaN or ±∞ is `value_not_finite`, previously
+  `parameter_out_of_range`. A whole number outside the range, a negative one included,
+  stays `parameter_out_of_range` with `min` 0, `max` and `got`.
 
 ## [0.10.0] - 2026-10-07
 

@@ -566,9 +566,10 @@ pub fn distribution_quantile(
 /// interval (0, 1), so no variate is infinite.
 ///
 /// # Errors
-/// As [`distribution_cdf`] for `distribution`; `n` not a whole number in
-/// `[0, 2³² − 1]` or `seed` not a whole number in `[0, 2⁵³]` throws
-/// `parameter_out_of_range`.
+/// As [`distribution_cdf`] for `distribution`; `n` or `seed` with a fraction
+/// throws `malformed_input`, NaN or ±∞ `value_not_finite`, and a whole `n`
+/// outside `[0, 2³² − 1]` or `seed` outside `[0, 2⁵³]` (a negative one
+/// included) `parameter_out_of_range`.
 #[wasm_bindgen]
 pub fn distribution_sample(
     #[wasm_bindgen(unchecked_param_type = "DistributionSpec")] distribution: JsValue,
@@ -763,6 +764,46 @@ mod tests {
                 ("got", Field::Num(-1.0)),
             ]
         );
+    }
+
+    #[test]
+    fn a_fraction_is_not_a_whole_number_and_not_out_of_range() {
+        let r = whole("n", 2.5, 10.0).expect_err("fraction");
+        assert_eq!(r.code, "malformed_input");
+        assert_eq!(r.fields, vec![("parameter", Field::Str("n"))]);
+        assert_eq!(r.message, "n must be a whole number, got 2.5");
+        // A negative fraction is still a matter of type, not of range.
+        assert_eq!(
+            whole("n", -0.5, 10.0).expect_err("fraction").code,
+            "malformed_input"
+        );
+    }
+
+    #[test]
+    fn a_whole_number_above_the_range_names_it() {
+        let r = whole("n", 11.0, 10.0).expect_err("above");
+        assert_eq!(r.code, "parameter_out_of_range");
+        assert_eq!(
+            r.fields,
+            vec![
+                ("parameter", Field::Str("n")),
+                ("min", Field::Num(0.0)),
+                ("max", Field::Num(10.0)),
+                ("got", Field::Num(11.0)),
+            ]
+        );
+        assert_eq!(whole("n", 3.0, 10.0), Ok(3.0));
+        assert_eq!(whole("n", 0.0, 10.0), Ok(0.0));
+        assert_eq!(whole("n", 10.0, 10.0), Ok(10.0));
+    }
+
+    #[test]
+    fn a_non_finite_count_is_not_finite() {
+        for x in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            let r = whole("seed", x, 10.0).expect_err("non-finite");
+            assert_eq!(r.code, "value_not_finite");
+            assert_eq!(r.fields, vec![("parameter", Field::Str("seed"))]);
+        }
     }
 
     #[test]
