@@ -126,11 +126,15 @@ public class NumflowException : Exception
     /// </summary>
     public JsonElement? Details { get; }
 
+    /// <summary>A refusal with no readable body.</summary>
+    /// <param name="code">Native status, see <see cref="Code"/>.</param>
+    /// <param name="message">What went wrong, in words.</param>
     public NumflowException(int code, string message) : base(message)
     {
         Code = code;
     }
 
+    /// <summary>A refusal with the engine's reason and the values behind it.</summary>
     public NumflowException(int code, string message, string? reason, JsonElement? details) : base(message)
     {
         Code = code;

@@ -120,12 +120,12 @@ public sealed class Distribution
     /// <summary>
     /// <paramref name="n"/> random variates. The same <paramref name="seed"/> always gives the
     /// same values; the uniforms behind them come from the open interval (0, 1), so no variate
-    /// is infinite. <paramref name="seed"/> must be at most 2⁵³.
+    /// is infinite. <paramref name="seed"/> must be at most 2⁵³. A negative <paramref name="n"/>
+    /// is refused by the engine like any other setting: a <see cref="NumflowException"/> with
+    /// <c>parameter_out_of_range</c> on <c>n</c>.
     /// </summary>
     public double[] Sample(int n, long seed)
     {
-        if (n < 0)
-            throw new ArgumentOutOfRangeException(nameof(n), n, "n must be at least 0.");
         var r = Request();
         r["n"] = n;
         r["seed"] = seed;
