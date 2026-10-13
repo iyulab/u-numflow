@@ -14,6 +14,8 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
   .NET bindings' exceptions do — `Status` is the native status (was `Code`),
   `ErrorCode` the error body's `code` (was `Reason`), and `Parameter` / `Index`
   now say which value the refusal is about without reading `Details`. Migrate: `ex.Code` → `ex.Status`, `ex.Reason` → `ex.ErrorCode`.
+- **Breaking (.NET `UNumflow`):** `Distribution.Kind` is the `DistributionKind`
+  enum (`Weibull`, `ChiSquared`, …) instead of the engine's name as a string.
 
 ## [0.12.0] - 2026-10-13
 

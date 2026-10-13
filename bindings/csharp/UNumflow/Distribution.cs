@@ -25,13 +25,13 @@ public sealed class Distribution
     /// <summary>The variance.</summary>
     public double Variance { get; }
 
-    /// <summary>The engine's name for the distribution (<c>"weibull"</c>, <c>"chi_squared"</c>, …).</summary>
-    public string Kind { get; }
+    /// <summary>Which family this is.</summary>
+    public DistributionKind Kind { get; }
 
-    private Distribution(string kind, JsonObject parameters)
+    private Distribution(DistributionKind kind, JsonObject parameters)
     {
         Kind = kind;
-        _spec = new JsonObject { ["kind"] = kind };
+        _spec = new JsonObject { ["kind"] = WireName(kind) };
         foreach (var (name, value) in parameters)
             _spec[name] = value?.DeepClone();
         var moments = Engine.Call(NativeInterop.unumflow_distribution_moments, Request());
@@ -40,6 +40,22 @@ public sealed class Distribution
     }
 
     private JsonObject Request() => new() { ["distribution"] = _spec.DeepClone() };
+
+    /// <summary>The engine's name for <paramref name="kind"/>.</summary>
+    internal static string WireName(DistributionKind kind) => kind switch
+    {
+        DistributionKind.Uniform => "uniform",
+        DistributionKind.Triangular => "triangular",
+        DistributionKind.Pert => "pert",
+        DistributionKind.Normal => "normal",
+        DistributionKind.LogNormal => "lognormal",
+        DistributionKind.Weibull => "weibull",
+        DistributionKind.Exponential => "exponential",
+        DistributionKind.Gamma => "gamma",
+        DistributionKind.Beta => "beta",
+        DistributionKind.ChiSquared => "chi_squared",
+        _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "not a distribution kind"),
+    };
 
     /// <summary>The parameters as JSON, each checked finite (JSON cannot carry NaN or ±∞).</summary>
     private static JsonObject Params(params (string Name, double Value)[] values)
@@ -52,11 +68,11 @@ public sealed class Distribution
 
     /// <summary>Continuous uniform on [<paramref name="min"/>, <paramref name="max"/>].</summary>
     public static Distribution Uniform(double min, double max) =>
-        new("uniform", Params(("min", min), ("max", max)));
+        new(DistributionKind.Uniform, Params(("min", min), ("max", max)));
 
     /// <summary>Triangular on [<paramref name="min"/>, <paramref name="max"/>] peaking at <paramref name="mode"/>.</summary>
     public static Distribution Triangular(double min, double mode, double max) =>
-        new("triangular", Params(("min", min), ("mode", mode), ("max", max)));
+        new(DistributionKind.Triangular, Params(("min", min), ("mode", mode), ("max", max)));
 
     /// <summary>PERT (a scaled Beta); <paramref name="lambda"/> weights the mode (4 when omitted).</summary>
     public static Distribution Pert(double min, double mode, double max, double? lambda = null)
@@ -64,36 +80,36 @@ public sealed class Distribution
         var p = Params(("min", min), ("mode", mode), ("max", max));
         if (lambda is { } l)
             p["lambda"] = Engine.Finite("distribution.lambda", l);
-        return new("pert", p);
+        return new(DistributionKind.Pert, p);
     }
 
     /// <summary>Normal with mean <paramref name="mu"/> and standard deviation <paramref name="sigma"/>.</summary>
     public static Distribution Normal(double mu, double sigma) =>
-        new("normal", Params(("mu", mu), ("sigma", sigma)));
+        new(DistributionKind.Normal, Params(("mu", mu), ("sigma", sigma)));
 
     /// <summary>Log-normal: ln X ~ Normal(<paramref name="mu"/>, <paramref name="sigma"/>).</summary>
     public static Distribution LogNormal(double mu, double sigma) =>
-        new("lognormal", Params(("mu", mu), ("sigma", sigma)));
+        new(DistributionKind.LogNormal, Params(("mu", mu), ("sigma", sigma)));
 
     /// <summary>Weibull with <paramref name="shape"/> (β) and <paramref name="scale"/> (η).</summary>
     public static Distribution Weibull(double shape, double scale) =>
-        new("weibull", Params(("shape", shape), ("scale", scale)));
+        new(DistributionKind.Weibull, Params(("shape", shape), ("scale", scale)));
 
     /// <summary>Exponential with <paramref name="rate"/> (λ).</summary>
     public static Distribution Exponential(double rate) =>
-        new("exponential", Params(("rate", rate)));
+        new(DistributionKind.Exponential, Params(("rate", rate)));
 
     /// <summary>Gamma with <paramref name="shape"/> (α) and <paramref name="rate"/> (β).</summary>
     public static Distribution Gamma(double shape, double rate) =>
-        new("gamma", Params(("shape", shape), ("rate", rate)));
+        new(DistributionKind.Gamma, Params(("shape", shape), ("rate", rate)));
 
     /// <summary>Beta on [0, 1] with shapes <paramref name="alpha"/> and <paramref name="beta"/>.</summary>
     public static Distribution Beta(double alpha, double beta) =>
-        new("beta", Params(("alpha", alpha), ("beta", beta)));
+        new(DistributionKind.Beta, Params(("alpha", alpha), ("beta", beta)));
 
     /// <summary>Chi-squared with <paramref name="k"/> degrees of freedom.</summary>
     public static Distribution ChiSquared(double k) =>
-        new("chi_squared", Params(("k", k)));
+        new(DistributionKind.ChiSquared, Params(("k", k)));
 
     /// <summary>P(X ≤ <paramref name="x"/>).</summary>
     public double Cdf(double x)
@@ -136,4 +152,29 @@ public sealed class Distribution
             result[i++] = v.GetDouble();
         return result;
     }
+}
+
+/// <summary>The distribution families u-numflow has; <see cref="Distribution.Kind"/> says which one a distribution is.</summary>
+public enum DistributionKind
+{
+    /// <summary>Continuous uniform.</summary>
+    Uniform,
+    /// <summary>Triangular.</summary>
+    Triangular,
+    /// <summary>PERT (a scaled Beta).</summary>
+    Pert,
+    /// <summary>Normal.</summary>
+    Normal,
+    /// <summary>Log-normal.</summary>
+    LogNormal,
+    /// <summary>Two-parameter Weibull.</summary>
+    Weibull,
+    /// <summary>Exponential.</summary>
+    Exponential,
+    /// <summary>Gamma.</summary>
+    Gamma,
+    /// <summary>Beta.</summary>
+    Beta,
+    /// <summary>χ² (chi-squared).</summary>
+    ChiSquared,
 }

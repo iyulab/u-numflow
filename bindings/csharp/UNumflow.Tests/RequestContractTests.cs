@@ -41,7 +41,7 @@ public class RequestContractTests
         .Select(d => KeyValuePair.Create<string, Action>($"Distribution({d.Key})", () =>
         {
             var distribution = d.Value();
-            Assert.Equal(d.Key, distribution.Kind);
+            Assert.Equal(d.Key, Distribution.WireName(distribution.Kind));
             distribution.Cdf(distribution.Mean);
             distribution.Quantile(0.9);
             distribution.Sample(3, seed: 7);
