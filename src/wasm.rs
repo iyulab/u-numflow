@@ -204,6 +204,11 @@ impl From<Refusal> for JsValue {
                 Field::Num(n) => JsValue::from_f64(n),
                 Field::Str(s) => s.into(),
                 Field::Path(s) => s.into(),
+                Field::List(names) => names
+                    .iter()
+                    .map(|n| JsValue::from_str(n))
+                    .collect::<js_sys::Array>()
+                    .into(),
                 Field::Null => JsValue::NULL,
             };
             let _ = js_sys::Reflect::set(&err, &key.into(), &value);
@@ -500,9 +505,11 @@ fn read_distribution(value: &JsValue) -> Result<crate::wire::Distribution, Refus
     }
     let kind = js_sys::Reflect::get(value, &"kind".into()).unwrap_or(JsValue::UNDEFINED);
     let Some(kind) = kind.as_string() else {
-        return Err(malformed(format!(
-            "{P}.kind: expected a string naming the distribution"
-        )));
+        return Err(Refusal {
+            code: "malformed_input",
+            message: format!("{P}.kind: expected a string naming the distribution"),
+            fields: vec![("parameter", Field::Str("distribution.kind"))],
+        });
     };
     check_kind(&kind)?;
     if let Some((path, n)) = find_non_finite(value, P) {

@@ -1,0 +1,323 @@
+{
+  "$comment": "The keys and names each C entry point reads, measured from the entry points (src/ffi/request_keys.rs). Regenerate: UPDATE_REQUEST_KEYS=1 cargo test --features ffi --lib request_keys",
+  "entry_points": {
+    "unumflow_distribution_cdf": {
+      "properties": {
+        "distribution": {
+          "tag": "kind",
+          "variants": {
+            "beta": {
+              "properties": {
+                "alpha": {},
+                "beta": {}
+              }
+            },
+            "chi_squared": {
+              "properties": {
+                "k": {}
+              }
+            },
+            "exponential": {
+              "properties": {
+                "rate": {}
+              }
+            },
+            "gamma": {
+              "properties": {
+                "rate": {},
+                "shape": {}
+              }
+            },
+            "lognormal": {
+              "properties": {
+                "mu": {},
+                "sigma": {}
+              }
+            },
+            "normal": {
+              "properties": {
+                "mu": {},
+                "sigma": {}
+              }
+            },
+            "pert": {
+              "properties": {
+                "lambda": {},
+                "max": {},
+                "min": {},
+                "mode": {}
+              }
+            },
+            "triangular": {
+              "properties": {
+                "max": {},
+                "min": {},
+                "mode": {}
+              }
+            },
+            "uniform": {
+              "properties": {
+                "max": {},
+                "min": {}
+              }
+            },
+            "weibull": {
+              "properties": {
+                "scale": {},
+                "shape": {}
+              }
+            }
+          }
+        },
+        "x": {}
+      }
+    },
+    "unumflow_distribution_moments": {
+      "properties": {
+        "distribution": {
+          "tag": "kind",
+          "variants": {
+            "beta": {
+              "properties": {
+                "alpha": {},
+                "beta": {}
+              }
+            },
+            "chi_squared": {
+              "properties": {
+                "k": {}
+              }
+            },
+            "exponential": {
+              "properties": {
+                "rate": {}
+              }
+            },
+            "gamma": {
+              "properties": {
+                "rate": {},
+                "shape": {}
+              }
+            },
+            "lognormal": {
+              "properties": {
+                "mu": {},
+                "sigma": {}
+              }
+            },
+            "normal": {
+              "properties": {
+                "mu": {},
+                "sigma": {}
+              }
+            },
+            "pert": {
+              "properties": {
+                "lambda": {},
+                "max": {},
+                "min": {},
+                "mode": {}
+              }
+            },
+            "triangular": {
+              "properties": {
+                "max": {},
+                "min": {},
+                "mode": {}
+              }
+            },
+            "uniform": {
+              "properties": {
+                "max": {},
+                "min": {}
+              }
+            },
+            "weibull": {
+              "properties": {
+                "scale": {},
+                "shape": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "unumflow_distribution_quantile": {
+      "properties": {
+        "distribution": {
+          "tag": "kind",
+          "variants": {
+            "beta": {
+              "properties": {
+                "alpha": {},
+                "beta": {}
+              }
+            },
+            "chi_squared": {
+              "properties": {
+                "k": {}
+              }
+            },
+            "exponential": {
+              "properties": {
+                "rate": {}
+              }
+            },
+            "gamma": {
+              "properties": {
+                "rate": {},
+                "shape": {}
+              }
+            },
+            "lognormal": {
+              "properties": {
+                "mu": {},
+                "sigma": {}
+              }
+            },
+            "normal": {
+              "properties": {
+                "mu": {},
+                "sigma": {}
+              }
+            },
+            "pert": {
+              "properties": {
+                "lambda": {},
+                "max": {},
+                "min": {},
+                "mode": {}
+              }
+            },
+            "triangular": {
+              "properties": {
+                "max": {},
+                "min": {},
+                "mode": {}
+              }
+            },
+            "uniform": {
+              "properties": {
+                "max": {},
+                "min": {}
+              }
+            },
+            "weibull": {
+              "properties": {
+                "scale": {},
+                "shape": {}
+              }
+            }
+          }
+        },
+        "p": {}
+      }
+    },
+    "unumflow_distribution_sample": {
+      "properties": {
+        "distribution": {
+          "tag": "kind",
+          "variants": {
+            "beta": {
+              "properties": {
+                "alpha": {},
+                "beta": {}
+              }
+            },
+            "chi_squared": {
+              "properties": {
+                "k": {}
+              }
+            },
+            "exponential": {
+              "properties": {
+                "rate": {}
+              }
+            },
+            "gamma": {
+              "properties": {
+                "rate": {},
+                "shape": {}
+              }
+            },
+            "lognormal": {
+              "properties": {
+                "mu": {},
+                "sigma": {}
+              }
+            },
+            "normal": {
+              "properties": {
+                "mu": {},
+                "sigma": {}
+              }
+            },
+            "pert": {
+              "properties": {
+                "lambda": {},
+                "max": {},
+                "min": {},
+                "mode": {}
+              }
+            },
+            "triangular": {
+              "properties": {
+                "max": {},
+                "min": {},
+                "mode": {}
+              }
+            },
+            "uniform": {
+              "properties": {
+                "max": {},
+                "min": {}
+              }
+            },
+            "weibull": {
+              "properties": {
+                "scale": {},
+                "shape": {}
+              }
+            }
+          }
+        },
+        "n": {},
+        "seed": {}
+      }
+    },
+    "unumflow_interval_contains": {
+      "properties": {
+        "intervals": {},
+        "t": {}
+      }
+    },
+    "unumflow_interval_difference": {
+      "properties": {
+        "a": {},
+        "b": {}
+      }
+    },
+    "unumflow_interval_intersection": {
+      "properties": {
+        "a": {},
+        "b": {}
+      }
+    },
+    "unumflow_interval_measure": {
+      "properties": {
+        "intervals": {}
+      }
+    },
+    "unumflow_interval_normalize": {
+      "properties": {
+        "intervals": {}
+      }
+    },
+    "unumflow_interval_union": {
+      "properties": {
+        "a": {},
+        "b": {}
+      }
+    }
+  }
+}

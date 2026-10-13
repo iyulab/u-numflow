@@ -221,6 +221,13 @@ jobs:
           dotnet-version: '10.0.x'
       - name: Build the C# binding
         run: dotnet build bindings/csharp/UNumflow/UNumflow.csproj -c Release
+      # Every request the client writes is checked against the keys and names the
+      # entry points read (src/ffi/request_keys.json), against the real library and
+      # with reflection-based JSON disabled, so build the library first.
+      - name: Build the native library
+        run: cargo build --features ffi
+      - name: Request contract tests (reflection-based JSON disabled)
+        run: dotnet test bindings/csharp/UNumflow.Tests/UNumflow.Tests.csproj
 
   unused-deps:
     name: Unused Dependencies

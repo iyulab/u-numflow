@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>UNumflow.Tests</RootNamespace>
+
+    <!-- What a trimmed or NativeAOT host runs with: any reflection-based JSON in the
+         client throws here exactly as it would there. -->
+    <JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault>
+
+    <!-- The native library from a `cargo build` with the ffi feature. A standalone clone
+         builds into its own target/; inside a Cargo workspace it lands in the workspace's. -->
+    <UNumflowNativeDir Condition="'$(UNumflowNativeDir)' == '' and (Exists('$(MSBuildThisFileDirectory)../../../target/debug/u_numflow.dll') or Exists('$(MSBuildThisFileDirectory)../../../target/debug/libu_numflow.so') or Exists('$(MSBuildThisFileDirectory)../../../target/debug/libu_numflow.dylib'))">$(MSBuildThisFileDirectory)../../../target/debug</UNumflowNativeDir>
+    <UNumflowNativeDir Condition="'$(UNumflowNativeDir)' == ''">$(MSBuildThisFileDirectory)../../../../../target/debug</UNumflowNativeDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../UNumflow/UNumflow.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The keys and names each entry point reads, measured by the engine's own tests:
+         every request the client writes is checked against them. -->
+    <None Include="../../../src/ffi/request_keys.json" Link="request_keys.json"
+          CopyToOutputDirectory="PreserveNewest" Visible="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="$(UNumflowNativeDir)/u_numflow.dll" Condition="Exists('$(UNumflowNativeDir)/u_numflow.dll')"
+          CopyToOutputDirectory="PreserveNewest" Visible="false" />
+    <None Include="$(UNumflowNativeDir)/libu_numflow.so" Condition="Exists('$(UNumflowNativeDir)/libu_numflow.so')"
+          CopyToOutputDirectory="PreserveNewest" Visible="false" />
+    <None Include="$(UNumflowNativeDir)/libu_numflow.dylib" Condition="Exists('$(UNumflowNativeDir)/libu_numflow.dylib')"
+          CopyToOutputDirectory="PreserveNewest" Visible="false" />
+  </ItemGroup>
+
+</Project>

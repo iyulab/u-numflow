@@ -77,6 +77,7 @@ fn field_json(f: Field) -> Value {
         Field::Num(n) => json!(n),
         Field::Str(s) => json!(s),
         Field::Path(s) => json!(s),
+        Field::List(names) => json!(names),
         Field::Null => Value::Null,
     }
 }
@@ -146,7 +147,7 @@ fn parse<T: DeserializeOwned>(text: &str) -> Result<T, Failure> {
 fn distribution(value: Value) -> Result<Distribution, Failure> {
     let kind = value.get("kind").and_then(Value::as_str).ok_or_else(|| {
         malformed(
-            "distribution",
+            "distribution.kind",
             "distribution.kind: expected a string naming the distribution".to_string(),
         )
     })?;
@@ -170,12 +171,21 @@ struct DistOnly {
     distribution: Value,
 }
 
+/// `{distribution, x}`. Each call's request has exactly the keys it reads, so
+/// a `p` sent to the CDF is refused as unknown rather than ignored.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct DistAt {
+struct DistAtX {
     distribution: Value,
     #[serde(default)]
     x: Option<f64>,
+}
+
+/// `{distribution, p}`.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DistAtP {
+    distribution: Value,
     #[serde(default)]
     p: Option<f64>,
 }
@@ -188,9 +198,18 @@ struct DistSample {
     seed: f64,
 }
 
+/// `{intervals}`.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct One {
+    intervals: Vec<Vec<f64>>,
+}
+
+/// `{intervals, t}`: only `unumflow_interval_contains` reads a point, so
+/// only its request has one.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct OneAt {
     intervals: Vec<Vec<f64>>,
     #[serde(default)]
     t: Option<f64>,
@@ -243,7 +262,7 @@ export!(
     /// `P(X ≤ x)`.
     unumflow_distribution_cdf,
     |text| {
-        let r: DistAt = parse(text)?;
+        let r: DistAtX = parse(text)?;
         let d = distribution(r.distribution)?;
         let x = required("x", r.x)?;
         check_finite("x", x).map_err(refused)?;
@@ -255,7 +274,7 @@ export!(
     /// The `x` with `P(X ≤ x) = p`, for `p` strictly inside (0, 1).
     unumflow_distribution_quantile,
     |text| {
-        let r: DistAt = parse(text)?;
+        let r: DistAtP = parse(text)?;
         let d = distribution(r.distribution)?;
         let p = required("p", r.p)?;
         check_probability(p).map_err(refused)?;
@@ -299,7 +318,7 @@ export!(
     /// Whether `t` lies in the union of `intervals` (half-open).
     unumflow_interval_contains,
     |text| {
-        let r: One = parse(text)?;
+        let r: OneAt = parse(text)?;
         let t = required("t", r.t)?;
         Ok(json!({ "value": intervals("intervals", r.intervals)?.contains(t) }))
     }
@@ -449,6 +468,7 @@ mod tests {
         assert_eq!((s, b["code"].as_str()), (-3, Some("unknown_option")), "{b}");
         assert_eq!(b["parameter"], "distribution.kind");
         assert_eq!(b["got"], "weibul");
+        assert_eq!(b["expected"][0], "uniform", "the names, as a list: {b}");
 
         let (s, b) = call(
             unumflow_distribution_cdf,
@@ -620,6 +640,49 @@ mod tests {
     }
 
     #[test]
+    fn a_call_refuses_the_key_of_another_call() {
+        // The CDF reads `x` and the quantile `p`; neither takes the other's.
+        // A key a call does not read is refused, not ignored.
+        for (f, request, key) in [
+            (
+                unumflow_distribution_cdf as Export,
+                r#"{"distribution": {"kind": "exponential", "rate": 1}, "x": 1, "p": 0.5}"#,
+                "p",
+            ),
+            (
+                unumflow_distribution_quantile,
+                r#"{"distribution": {"kind": "exponential", "rate": 1}, "p": 0.5, "x": 1}"#,
+                "x",
+            ),
+            // Only `contains` reads a point.
+            (
+                unumflow_interval_measure,
+                r#"{"intervals": [[0, 1]], "t": 0.5}"#,
+                "t",
+            ),
+            (
+                unumflow_interval_normalize,
+                r#"{"intervals": [[0, 1]], "t": 0.5}"#,
+                "t",
+            ),
+        ] {
+            let (s, b) = call(f, request);
+            assert_eq!(
+                (s, b["code"].as_str()),
+                (-2, Some("malformed_input")),
+                "{b}"
+            );
+            assert!(
+                b["error"]
+                    .as_str()
+                    .unwrap()
+                    .contains(&format!("unknown field `{key}`")),
+                "{b}"
+            );
+        }
+    }
+
+    #[test]
     fn version_is_the_crate_version() {
         let v = unumflow_version();
         let s = unsafe { CStr::from_ptr(v) }.to_str().unwrap().to_owned();
@@ -627,3 +690,6 @@ mod tests {
         assert_eq!(s, env!("CARGO_PKG_VERSION"));
     }
 }
+
+#[cfg(test)]
+mod request_keys;

@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Maintained from 0.2.1 onward; earlier entries list release dates only (see git history).
 
+## [Unreleased]
+
+### Added
+
+- `src/ffi/request_keys.json` lists the keys each C entry point reads, the
+  parameters of every distribution `kind` included. The crate's tests measure it from
+  the entry points themselves -- a request with a key no request has, and a value with
+  a name no option has, at every level -- and fail when the file and the entry points
+  differ.
+- .NET: a test project checks every request the client writes against that list in
+  both directions, and runs every call with every setting against the native library,
+  with reflection-based JSON disabled. CI runs it.
+
+### Changed
+
+- **Breaking:** each C entry point's request has exactly the keys that call reads. A
+  `p` sent to `unumflow_distribution_cdf`, an `x` sent to
+  `unumflow_distribution_quantile`, and a `t` sent to `unumflow_interval_measure` or
+  `unumflow_interval_normalize` are refused as unknown keys (status -2,
+  `malformed_input`); they were accepted and ignored.
+- **Breaking:** an unknown `distribution.kind` is refused with `expected` as a list of
+  names, as every other unknown option is; it was one comma-separated string. Over
+  WebAssembly the property is an array.
+- A `distribution` without a `kind` string is refused with `parameter:
+  "distribution.kind"` (it was `"distribution"`), over both interfaces.
+
 ## [0.11.0] - 2026-10-13
 
 The .NET client is `UNumflow` 0.3.0.

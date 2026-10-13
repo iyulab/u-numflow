@@ -32,9 +32,17 @@ internal static class Engine
 {
     internal delegate int Export(string requestJson, out IntPtr resultPtr);
 
+    /// <summary>
+    /// Sees each request body as it is sent, with the entry point it goes to — the contract
+    /// tests check every key and name in it against the ones the engine reads.
+    /// </summary>
+    internal static Action<string, string>? RequestObserver { get; set; }
+
     internal static JsonElement Call(Export export, JsonObject request)
     {
-        var status = export(request.ToJsonString(), out var resultPtr);
+        var json = request.ToJsonString();
+        RequestObserver?.Invoke(export.Method.Name, json);
+        var status = export(json, out var resultPtr);
         try
         {
             if (resultPtr == IntPtr.Zero)

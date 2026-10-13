@@ -33,6 +33,8 @@ pub(crate) enum Field {
     Str(&'static str),
     /// A path built at run time, such as `a[3]`.
     Path(String),
+    /// A closed set of names, such as the ones an option takes.
+    List(&'static [&'static str]),
     Null,
 }
 
@@ -231,7 +233,7 @@ pub(crate) fn check_kind(kind: &str) -> Result<(), Refusal> {
         fields: vec![
             ("parameter", Field::Str("distribution.kind")),
             ("got", Field::Path(kind.to_string())),
-            ("expected", Field::Path(KINDS.join(", "))),
+            ("expected", Field::List(KINDS)),
         ],
     })
 }
