@@ -476,9 +476,35 @@ mod tests {
             unumflow_distribution_cdf,
             r#"{"distribution": {"kind": "uniform", "min": 3, "max": 1}, "x": 1}"#,
         );
+        // `max` must lie above `min`: a range whose open end is `min`.
+        assert_eq!(s, -3);
         assert_eq!(
-            (s, b["code"].as_str(), b["parameter"].as_str()),
-            (-3, Some("invalid_option"), Some("distribution.max"))
+            b,
+            serde_json::json!({
+                "error": b["error"],
+                "code": "parameter_out_of_range",
+                "parameter": "distribution.max",
+                "min": null,
+                "exclusive_min": 3.0,
+                "max": null,
+                "got": 1.0,
+            })
+        );
+        let (s, b) = call(
+            unumflow_distribution_cdf,
+            r#"{"distribution": {"kind": "triangular", "min": 0, "mode": 5, "max": 4}, "x": 1}"#,
+        );
+        assert_eq!(s, -3);
+        assert_eq!(
+            b,
+            serde_json::json!({
+                "error": b["error"],
+                "code": "parameter_out_of_range",
+                "parameter": "distribution.mode",
+                "min": 0.0,
+                "max": 4.0,
+                "got": 5.0,
+            })
         );
 
         let (s, b) = call(unumflow_interval_union, r#"{"a": [[0, 1]], "b": [[5, 3]]}"#);

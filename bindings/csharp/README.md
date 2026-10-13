@@ -61,8 +61,7 @@ catch (NumflowException e)
 
 | `Reason` | Details | Meaning |
 |---|---|---|
-| `parameter_out_of_range` | `parameter`, `min`, `max`, `got`; `exclusive_min` / `exclusive_max` on an open end | A distribution parameter that must be `> 0` (`exclusive_min` 0); `p` not strictly inside (0, 1) (`exclusive_min` 0, `exclusive_max` 1); a `seed` outside `[0, 2⁵³]` (`min`, `max`) |
-| `invalid_option` | `parameter` | Parameters out of order: `min < max`, `min ≤ mode ≤ max` |
+| `parameter_out_of_range` | `parameter`, `min`, `max`, `got`; `exclusive_min` / `exclusive_max` on an open end | A distribution parameter that must be `> 0` (`exclusive_min` 0); `distribution.max` not above `min` (`exclusive_min` = `min`) or `distribution.mode` outside `[min, max]` (`min`, `max`); `p` not strictly inside (0, 1) (`exclusive_min` 0, `exclusive_max` 1); a `seed` outside `[0, 2⁵³]` (`min`, `max`) |
 | `value_not_finite` | `parameter`, `index` | A NaN or infinite parameter or interval bound |
 | `reversed_interval` | `parameter`, `index` | An interval with start > end — refused, not swapped |
 | `unknown_option` | `parameter`, `got`, `expected` | A distribution kind the engine does not have |

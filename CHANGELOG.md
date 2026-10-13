@@ -24,6 +24,18 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
   `parameter_out_of_range`; NaN or ±∞ is `value_not_finite`, previously
   `parameter_out_of_range`. A whole number outside the range, a negative one included,
   stays `parameter_out_of_range` with `min` 0, `max` and `got`.
+- **Breaking:** a distribution parameter outside the range the others leave it is
+  `parameter_out_of_range` (WebAssembly and C ABI), previously `invalid_option` with no
+  bounds: `max` not above `min` reports `parameter: "distribution.max"`,
+  `exclusive_min` = `min` and `got`; `mode` outside `[min, max]` reports
+  `parameter: "distribution.mode"`, `min`, `max` and `got`.
+  `DistributionError::Unordered` carries those bounds (`low`, `high`) and the value
+  given (`got`), and its message ends with the value.
+- **Breaking:** `estimate_lambda` (WebAssembly) refuses `lambda_min` not below
+  `lambda_max` as `parameter_out_of_range` with `parameter: "lambda_min"`,
+  `exclusive_max` = `lambda_max` and `got`, and a NaN or infinite end as
+  `value_not_finite` naming it. Both were `invalid_lambda_range`, whose `min` and `max`
+  held the values given rather than bounds.
 
 ## [0.10.0] - 2026-10-07
 

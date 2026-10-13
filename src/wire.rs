@@ -58,6 +58,16 @@ pub(crate) enum Bound {
     Unbounded,
 }
 
+impl From<std::ops::Bound<f64>> for Bound {
+    fn from(end: std::ops::Bound<f64>) -> Self {
+        match end {
+            std::ops::Bound::Included(v) => Bound::Closed(v),
+            std::ops::Bound::Excluded(v) => Bound::Open(v),
+            std::ops::Bound::Unbounded => Bound::Unbounded,
+        }
+    }
+}
+
 impl Bound {
     /// The `min`/`max` value and, for an open end, the `exclusive_*` value.
     fn split(self) -> (Field, Option<f64>) {
@@ -244,11 +254,21 @@ pub(crate) fn distribution_refusal(e: DistributionError) -> Refusal {
             got,
             message,
         ),
-        DistributionError::Unordered { parameter, .. } => Refusal {
-            code: "invalid_option",
+        // `max` above `min`, `mode` within `[min, max]`: a range whose ends
+        // are the other parameters' values.
+        DistributionError::Unordered {
+            parameter,
+            low,
+            high,
+            got,
+            ..
+        } => Refusal::out_of_range(
+            Field::Path(format!("{P}.{parameter}")),
+            Bound::from(low),
+            Bound::from(high),
+            got,
             message,
-            fields: vec![("parameter", Field::Path(format!("{P}.{parameter}")))],
-        },
+        ),
     }
 }
 
@@ -442,6 +462,51 @@ mod tests {
                 ("max", Field::Null),
                 ("got", Field::Num(-1.0)),
             ]
+        );
+    }
+
+    /// A parameter that must lie inside the range the others leave it is a
+    /// range refusal whose ends are those parameters' values, read off the
+    /// distribution's own check.
+    #[test]
+    fn a_parameter_out_of_order_reports_the_range_the_others_leave_it() {
+        let uniform = DistributionSpec::Uniform { min: 3.0, max: 1.0 };
+        let r = distribution_refusal(uniform.build().unwrap_err());
+        assert_eq!(r.code, "parameter_out_of_range");
+        assert_eq!(
+            r.fields,
+            vec![
+                ("parameter", Field::Path("distribution.max".into())),
+                ("min", Field::Null),
+                ("exclusive_min", Field::Num(3.0)),
+                ("max", Field::Null),
+                ("got", Field::Num(1.0)),
+            ]
+        );
+        // Equal ends leave no room either: `max` must be above `min`.
+        let equal = DistributionSpec::Uniform { min: 2.0, max: 2.0 };
+        let r = distribution_refusal(equal.build().unwrap_err());
+        assert_eq!(r.fields[2], ("exclusive_min", Field::Num(2.0)));
+
+        let triangular = DistributionSpec::Triangular {
+            min: 0.0,
+            mode: 5.0,
+            max: 4.0,
+        };
+        let r = distribution_refusal(triangular.build().unwrap_err());
+        assert_eq!(r.code, "parameter_out_of_range");
+        assert_eq!(
+            r.fields,
+            vec![
+                ("parameter", Field::Path("distribution.mode".into())),
+                ("min", Field::Num(0.0)),
+                ("max", Field::Num(4.0)),
+                ("got", Field::Num(5.0)),
+            ]
+        );
+        assert_eq!(
+            r.message,
+            "distribution: mode breaks the required order min ≤ mode ≤ max, got 5"
         );
     }
 }

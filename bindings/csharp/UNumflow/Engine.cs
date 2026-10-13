@@ -103,7 +103,7 @@ public class NumflowException : Exception
 
     /// <summary>
     /// Stable, machine-readable reason, e.g. <c>parameter_out_of_range</c>, <c>unknown_option</c>,
-    /// <c>invalid_option</c>, <c>value_not_finite</c>, <c>reversed_interval</c>,
+    /// <c>value_not_finite</c>, <c>reversed_interval</c>,
     /// <c>malformed_input</c>, <c>internal</c>. <c>null</c> when the engine returned no readable body.
     /// </summary>
     public string? Reason { get; }

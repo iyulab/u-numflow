@@ -23,6 +23,8 @@
 //! This module is **domain-agnostic**. There is no concept of "duration",
 //! "scheduling", or any consumer domain. Parameters are plain `f64` values.
 
+use std::ops::Bound;
+
 use crate::special;
 
 mod sampling;
@@ -46,7 +48,7 @@ pub enum DistributionError {
         /// The value given.
         got: f64,
     },
-    /// Parameters out of their required order (`min < max`,
+    /// A parameter outside the range the others leave it (`min < max`,
     /// `min ≤ mode ≤ max`).
     Unordered {
         /// The parameter that falls outside the order (`"max"` when
@@ -54,6 +56,13 @@ pub enum DistributionError {
         parameter: &'static str,
         /// The order that must hold, as text.
         relation: &'static str,
+        /// The lower end of the range the parameter must lie in: `max` is
+        /// above `min` (`Excluded(min)`), `mode` at least `min`.
+        low: Bound<f64>,
+        /// The upper end: `Unbounded` for `max`, `Included(max)` for `mode`.
+        high: Bound<f64>,
+        /// The value given.
+        got: f64,
     },
 }
 
@@ -69,7 +78,12 @@ impl std::fmt::Display for DistributionError {
             DistributionError::Unordered {
                 parameter,
                 relation,
-            } => write!(f, "{parameter} breaks the required order {relation}"),
+                got,
+                ..
+            } => write!(
+                f,
+                "{parameter} breaks the required order {relation}, got {got}"
+            ),
         }
     }
 }
@@ -98,12 +112,18 @@ fn ordered(min: f64, mode: Option<f64>, max: f64) -> Result<(), DistributionErro
         return Err(DistributionError::Unordered {
             parameter: "max",
             relation: "min < max",
+            low: Bound::Excluded(min),
+            high: Bound::Unbounded,
+            got: max,
         });
     }
     match mode {
         Some(m) if m < min || m > max => Err(DistributionError::Unordered {
             parameter: "mode",
             relation: "min ≤ mode ≤ max",
+            low: Bound::Included(min),
+            high: Bound::Included(max),
+            got: m,
         }),
         _ => Ok(()),
     }

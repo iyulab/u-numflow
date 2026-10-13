@@ -129,8 +129,33 @@ fn at_least(data: Vec<f64>, min: usize) -> Result<Vec<f64>, Refusal> {
     }
 }
 
+/// `estimate_lambda`'s search range refused: an end that is NaN or infinite
+/// is `value_not_finite`; otherwise `lambda_min` is not below `lambda_max`, a
+/// range for `lambda_min` whose open end is `lambda_max`.
+fn lambda_range_refusal(lambda_min: f64, lambda_max: f64) -> Refusal {
+    for (parameter, x) in [("lambda_min", lambda_min), ("lambda_max", lambda_max)] {
+        if !x.is_finite() {
+            return Refusal {
+                code: "value_not_finite",
+                message: format!("{parameter} must be a finite number, got {x}"),
+                fields: vec![("parameter", Field::Str(parameter))],
+            };
+        }
+    }
+    Refusal::out_of_range(
+        Field::Str("lambda_min"),
+        Bound::Unbounded,
+        Bound::Open(lambda_max),
+        lambda_min,
+        format!("lambda_min must be less than lambda_max ({lambda_max}), got {lambda_min}"),
+    )
+}
+
 impl From<TransformError> for Refusal {
     fn from(e: TransformError) -> Self {
+        if let TransformError::InvalidLambdaRange { min, max } = e {
+            return lambda_range_refusal(min, max);
+        }
         let data = ("parameter", Field::Str("data"));
         let (code, fields) = match e {
             TransformError::NonPositiveData { index, value } => (
@@ -153,14 +178,9 @@ impl From<TransformError> for Refusal {
                     ("got", Field::Num(got as f64)),
                 ],
             ),
-            TransformError::InvalidLambdaRange { min, max } => (
-                "invalid_lambda_range",
-                vec![
-                    ("parameter", Field::Str("lambda_min")),
-                    ("min", Field::Num(min)),
-                    ("max", Field::Num(max)),
-                ],
-            ),
+            TransformError::InvalidLambdaRange { .. } => {
+                unreachable!("refused with its range above")
+            }
             TransformError::InvalidTransform => ("invalid_transform", Vec::new()),
             TransformError::InvalidInverse => ("invalid_inverse", Vec::new()),
         };
@@ -291,8 +311,10 @@ struct LambdaEstimateDto {
 /// interior estimate; widen the range to find the unconstrained optimum.
 ///
 /// # Errors
-/// Throws as [`box_cox`] does for the data, and `invalid_lambda_range` when the
-/// range is not finite with `lambda_min < lambda_max`.
+/// Throws as [`box_cox`] does for the data; `value_not_finite` (`parameter`
+/// `"lambda_min"` or `"lambda_max"`) for a NaN or infinite end, and
+/// `parameter_out_of_range` (`parameter: "lambda_min"`, `exclusive_max` =
+/// `lambda_max`, `got`) unless `lambda_min < lambda_max`.
 #[wasm_bindgen(unchecked_return_type = "LambdaEstimateDto")]
 pub fn estimate_lambda(
     #[wasm_bindgen(unchecked_param_type = "number[] | Float64Array")] data: JsValue,
@@ -533,9 +555,10 @@ pub fn distribution_moments(
 /// As every `distribution` argument: `malformed_input` for a value that is
 /// not such an object, `unknown_option` for an unknown `kind` (with
 /// `expected`), `value_not_finite` for a NaN or infinite parameter,
-/// `parameter_out_of_range` for a parameter that must be `> 0`, and
-/// `invalid_option` for parameters out of order (`min < max`,
-/// `min ≤ mode ≤ max`). `x` NaN throws `value_not_finite`.
+/// `parameter_out_of_range` for a parameter that must be `> 0` and for one
+/// outside the range the others leave it -- `max` not above `min`
+/// (`exclusive_min` = `min`), `mode` outside `[min, max]` (`min`, `max`).
+/// `x` NaN throws `value_not_finite`.
 #[wasm_bindgen]
 pub fn distribution_cdf(
     #[wasm_bindgen(unchecked_param_type = "DistributionSpec")] distribution: JsValue,
@@ -858,6 +881,39 @@ mod tests {
         assert_eq!(r.fields[1], ("min", Field::Num(2.0)));
         assert_eq!(r.fields[2], ("got", Field::Num(1.0)));
         assert!(at_least(vec![1.0, 2.0], 2).is_ok());
+    }
+
+    /// `lambda_min` must lie below `lambda_max`: a range for `lambda_min`
+    /// whose open end is `lambda_max`, with `min`/`max` the bounds, not the
+    /// values given.
+    #[test]
+    fn a_lambda_range_that_is_empty_is_a_range_refusal() {
+        for (lo, hi) in [(2.0, -2.0), (1.0, 1.0)] {
+            let r = Refusal::from(TransformError::InvalidLambdaRange { min: lo, max: hi });
+            assert_eq!(r.code, "parameter_out_of_range");
+            assert_eq!(
+                r.fields,
+                vec![
+                    ("parameter", Field::Str("lambda_min")),
+                    ("min", Field::Null),
+                    ("max", Field::Null),
+                    ("exclusive_max", Field::Num(hi)),
+                    ("got", Field::Num(lo)),
+                ]
+            );
+        }
+        let r = Refusal::from(
+            crate::transforms::estimate_lambda(&[1.0, 2.0, 3.0], 2.0, -2.0).unwrap_err(),
+        );
+        assert_eq!(r.code, "parameter_out_of_range");
+        for (lo, hi, named) in [
+            (f64::NAN, 2.0, "lambda_min"),
+            (-2.0, f64::INFINITY, "lambda_max"),
+        ] {
+            let r = Refusal::from(TransformError::InvalidLambdaRange { min: lo, max: hi });
+            assert_eq!(r.code, "value_not_finite");
+            assert_eq!(r.fields, vec![("parameter", Field::Str(named))]);
+        }
     }
 
     #[test]
