@@ -101,49 +101,78 @@ internal static class Engine
 }
 
 /// <summary>
-/// A request the engine refused. <see cref="Exception.Message"/> is readable text;
-/// <see cref="Reason"/> and <see cref="Details"/> are for programs.
+/// A request the engine refused. <see cref="Exception.Message"/> is readable text; <see
+/// cref="ErrorCode"/>,
+/// <see cref="Parameter"/>, <see cref="Index"/> and <see cref="Details"/> are for programs —
+/// the same members, with the same meaning, on every sibling package's exception.
 /// </summary>
 public class NumflowException : Exception
 {
-    /// <summary>Native status: -1 null pointer, -2 malformed request, -3 refused request, -4 internal panic.</summary>
-    public int Code { get; }
+    /// <summary>Native status: -1 null pointer, -2 malformed request, -3 refused request,
+    /// -4 internal panic.</summary>
+    public int Status { get; }
 
     /// <summary>
-    /// Stable, machine-readable reason, e.g. <c>parameter_out_of_range</c>, <c>unknown_option</c>,
-    /// <c>value_not_finite</c>, <c>reversed_interval</c>,
-    /// <c>malformed_input</c>, <c>internal</c>. <c>null</c> when the engine returned no readable body.
+    /// Stable, machine-readable reason: the <c>code</c> of the engine's error body, the same
+    /// name the WebAssembly binding puts on its <c>Error</c> —
+    /// <c>parameter_out_of_range</c>, <c>unknown_option</c>, <c>value_not_finite</c>,
+    /// <c>reversed_interval</c>, <c>malformed_input</c>, <c>internal</c>, ….
+    /// <c>null</c> when the engine returned no readable body.
     /// </summary>
-    public string? Reason { get; }
+    public string? ErrorCode { get; }
+
+    /// <summary>
+    /// The argument or option the refusal is about, as a path into the request
+    /// (<c>p</c>, <c>intervals[2]</c>, …) — the body's <c>parameter</c>. <c>null</c> when
+    /// the refusal is not
+    /// about one value.
+    /// </summary>
+    public string? Parameter { get; }
+
+    /// <summary>
+    /// Zero-based position of the offending element in the array <see cref="Parameter"/>
+    /// names — the body's <c>index</c>. <c>null</c> when the value is not an array element.
+    /// </summary>
+    public int? Index { get; }
 
     /// <summary>
     /// The whole error body: <c>error</c>, <c>code</c> and the values behind the reason
     /// (<c>parameter</c>, <c>index</c>, <c>min</c>, <c>max</c>, <c>exclusive_min</c>,
-    /// <c>exclusive_max</c>, <c>got</c>, <c>expected</c>). In <c>parameter_out_of_range</c>,
-    /// <c>min</c>/<c>max</c> are inclusive bounds (<c>null</c> when that end is unbounded or
-    /// open) and <c>exclusive_min</c>/<c>exclusive_max</c> are present only for an open end.
-    /// <c>null</c> when there is no body.
+    /// <c>exclusive_max</c>, <c>got</c>, <c>expected</c>). For
+    /// <c>parameter_out_of_range</c>, <c>min</c> / <c>max</c> are the closed
+    /// (included) bounds — <c>null</c> on a side that is open or unbounded — and
+    /// <c>exclusive_min</c> / <c>exclusive_max</c> the open (excluded) ones, present only on
+    /// an open side. <c>null</c> when there is no body.
     /// </summary>
     public JsonElement? Details { get; }
 
     /// <summary>A refusal with no readable body.</summary>
-    /// <param name="code">Native status, see <see cref="Code"/>.</param>
+    /// <param name="status">Native status, see <see cref="Status"/>.</param>
     /// <param name="message">What went wrong, in words.</param>
-    public NumflowException(int code, string message) : base(message)
+    public NumflowException(int status, string message) : base(message)
     {
-        Code = code;
+        Status = status;
     }
 
-    /// <summary>A refusal with the engine's reason and the values behind it.</summary>
-    public NumflowException(int code, string message, string? reason, JsonElement? details) : base(message)
+    /// <summary>
+    /// A refusal with the engine's reason and the values behind it; <see cref="Parameter"/>
+    /// and <see cref="Index"/> are read from <paramref name="details"/>.
+    /// </summary>
+    /// <param name="status">Native status, see <see cref="Status"/>.</param>
+    /// <param name="message">What went wrong, in words.</param>
+    /// <param name="errorCode">The body's <c>code</c>.</param>
+    /// <param name="details">The error body.</param>
+    public NumflowException(int status, string message, string? errorCode, JsonElement? details) : base(message)
     {
-        Code = code;
-        Reason = reason;
+        Status = status;
+        ErrorCode = errorCode;
         Details = details;
+        Parameter = ParameterIn(details);
+        Index = IndexIn(details);
     }
 
     /// <summary>Reads the engine's <c>{"error", "code", ...}</c> error body.</summary>
-    internal static NumflowException FromErrorBody(int code, string body)
+    internal static NumflowException FromErrorBody(int status, string body)
     {
         try
         {
@@ -152,14 +181,29 @@ public class NumflowException : Exception
             var message = root.TryGetProperty("error", out var e) && e.ValueKind == JsonValueKind.String
                 ? e.GetString()!
                 : body;
-            string? reason = root.TryGetProperty("code", out var c) && c.ValueKind == JsonValueKind.String
+            string? errorCode = root.TryGetProperty("code", out var c) && c.ValueKind == JsonValueKind.String
                 ? c.GetString()
                 : null;
-            return new NumflowException(code, message, reason, root.Clone());
+            return new NumflowException(status, message, errorCode, root.Clone());
         }
         catch (JsonException)
         {
-            return new NumflowException(code, body);
+            return new NumflowException(status, body);
         }
     }
+
+    /// <summary>The body's <c>parameter</c>, when it is a string.</summary>
+    private static string? ParameterIn(JsonElement? details) =>
+        details is { ValueKind: JsonValueKind.Object } d
+        && d.TryGetProperty("parameter", out var p) && p.ValueKind == JsonValueKind.String
+            ? p.GetString()
+            : null;
+
+    /// <summary>The body's <c>index</c>, when it is a whole number.</summary>
+    private static int? IndexIn(JsonElement? details) =>
+        details is { ValueKind: JsonValueKind.Object } d
+        && d.TryGetProperty("index", out var i) && i.ValueKind == JsonValueKind.Number
+        && i.TryGetInt32(out var n)
+            ? n
+            : null;
 }

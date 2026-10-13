@@ -44,8 +44,9 @@ double upHours = week.Difference(planned.Union(unplanned)).Measure; // 138
 ## Errors
 
 A refused request raises `NumflowException`. `Message` is readable text;
-`Reason` is a stable code to branch on and `Details` is the error body with the
-values behind it:
+`ErrorCode` is a stable code to branch on (the error body's `code`), `Parameter`
+and `Index` say which value it is about, `Details` is the error body with the
+values behind it, and `Status` is the native status:
 
 ```csharp
 try
@@ -54,12 +55,12 @@ try
 }
 catch (NumflowException e)
 {
-    // e.Reason == "parameter_out_of_range"
+    // e.ErrorCode == "parameter_out_of_range"
     // e.Details: { "parameter": "distribution.sigma", "min": null, "exclusive_min": 0, "max": null, "got": -1, ... }
 }
 ```
 
-| `Reason` | Details | Meaning |
+| `ErrorCode` | Details | Meaning |
 |---|---|---|
 | `parameter_out_of_range` | `parameter`, `min`, `max`, `got`; `exclusive_min` / `exclusive_max` on an open end | A distribution parameter that must be `> 0` (`exclusive_min` 0); `distribution.max` not above `min` (`exclusive_min` = `min`) or `distribution.mode` outside `[min, max]` (`min`, `max`); `p` not strictly inside (0, 1) (`exclusive_min` 0, `exclusive_max` 1); a `seed` outside `[0, 2⁵³]` (`min`, `max`) |
 | `value_not_finite` | `parameter`, `index` | A NaN or infinite parameter or interval bound |
