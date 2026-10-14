@@ -8,6 +8,10 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ## [Unreleased]
 
+## [UNumflow 0.5.0] - 2026-10-14
+
+The .NET client only; the crate is unchanged at 0.12.0.
+
 ### Changed
 
 - **Breaking (.NET `UNumflow`):** `NumflowException` names its members the way the other
