@@ -128,7 +128,7 @@ public class RequestContractTests
         var bound = typeof(NativeInterop)
             .GetMethods(BindingFlags.Public | BindingFlags.Static | BindingFlags.DeclaredOnly)
             .Select(m => m.Name)
-            .Where(n => n is not ("unumflow_version" or "unumflow_free_string"))
+            .Where(n => n is not ("unumflow_version" or "unumflow_codes" or "unumflow_free_string"))
             .Order(StringComparer.Ordinal);
         Assert.Equal(RequestKeys.EntryPoints.Select(e => e.Key).Order(StringComparer.Ordinal), bound);
     }

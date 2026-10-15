@@ -69,6 +69,11 @@ catch (NumflowException e)
 | `malformed_input` | `parameter` | A request the engine could not read |
 | `internal` | — | An engine fault |
 
+`Numflow.Codes` returns the engine's codes as data — `Codes(Refusals, Violations)`, each
+refusal with the fields beside it — from the table the engine refuses from (it is the
+engine's whole list, so it also names reasons only the WebAssembly package's functions
+raise).
+
 In `parameter_out_of_range`, `min` and `max` are inclusive bounds and are always
 present — `null` when that end is unbounded or open. An open (exclusive) end is
 `exclusive_min` / `exclusive_max`, present only when the bound is open.

@@ -212,7 +212,9 @@ console.log(interval_measure(up));                         // 138
 
 `codes()` returns every refusal `code` the functions throw, with the fields that
 can come with it — `{ refusals: [{ code, fields }], violations: [] }` — built from
-the table the refusals come from; the table below explains each.
+the table the refusals come from; the table below explains each. The C library
+returns the same JSON from `unumflow_codes()` and the .NET package from
+`Numflow.Codes`.
 
 **Errors.** A refusal throws an `Error` whose `message` is readable text and which
 carries a `code` naming the reason, next to the values behind it:

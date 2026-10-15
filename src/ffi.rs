@@ -369,6 +369,19 @@ pub unsafe extern "C" fn unumflow_free_string(ptr: *mut libc::c_char) {
     }
 }
 
+/// Every refusal `code` this library answers with, and the fields beside
+/// each, as JSON: `{"refusals": [{"code", "fields"}], "violations": []}` --
+/// built from the table the refusals are made from, so a caller that
+/// translates codes can check its list against the library's. Release it with
+/// [`unumflow_free_string`].
+#[no_mangle]
+pub extern "C" fn unumflow_codes() -> *mut libc::c_char {
+    let json = serde_json::to_string(&crate::wire::code_catalog()).expect("codes serialize");
+    CString::new(json)
+        .expect("JSON has no interior NUL")
+        .into_raw()
+}
+
 /// The library version; release it with [`unumflow_free_string`].
 #[no_mangle]
 pub extern "C" fn unumflow_version() -> *mut libc::c_char {
@@ -685,6 +698,20 @@ mod tests {
                 "{b}"
             );
         }
+    }
+
+    #[test]
+    fn the_codes_are_the_wire_catalog() {
+        let ptr = unumflow_codes();
+        let json = unsafe { CStr::from_ptr(ptr) }
+            .to_str()
+            .expect("UTF-8")
+            .to_owned();
+        unsafe { unumflow_free_string(ptr) };
+        let codes: crate::wire::Codes = serde_json::from_str(&json).expect("a catalog");
+        assert_eq!(codes, crate::wire::code_catalog());
+        assert!(codes.refusals.iter().any(|r| r.code == "value_not_finite"));
+        assert!(codes.violations.is_empty());
     }
 
     #[test]
