@@ -8,6 +8,10 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-10-16
+
+The .NET client is `UNumflow` 0.6.0.
+
 ### Added
 
 - `codes()` (WebAssembly): every refusal `code` the package throws, with the
