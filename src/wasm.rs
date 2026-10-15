@@ -356,9 +356,9 @@ pub fn estimate_lambda(
     })
     .map_err(|e| {
         Refusal {
-            code: Code::MalformedInput,
+            code: Code::Internal,
             message: e.to_string(),
-            fields: vec![("parameter", Field::Str("result"))],
+            fields: vec![],
         }
         .into()
     })
