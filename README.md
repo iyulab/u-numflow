@@ -210,6 +210,10 @@ const up = interval_difference([[0, 168]], down);          // [[30, 168]]
 console.log(interval_measure(up));                         // 138
 ```
 
+`codes()` returns every refusal `code` the functions throw, with the fields that
+can come with it — `{ refusals: [{ code, fields }], violations: [] }` — built from
+the table the refusals come from; the table below explains each.
+
 **Errors.** A refusal throws an `Error` whose `message` is readable text and which
 carries a `code` naming the reason, next to the values behind it:
 
@@ -234,6 +238,8 @@ try {
 | `non_positive_data` | `parameter`, `index`, `got` | Box-Cox data with a value `≤ 0` — `index` is the first such value |
 | `insufficient_data` | `parameter`, `min`, `got` | Fewer values than the function needs (`std_dev`/`variance` 2, Box-Cox 2) |
 | `invalid_transform` | — | A Box-Cox result that is not finite |
+| `invalid_inverse` | — | An inverse Box-Cox whose result is not finite |
+| `internal` | — | A fault in this package rather than in the request — please report it |
 
 In `parameter_out_of_range`, `min` and `max` are inclusive bounds and are always
 present — `null` when that end is unbounded or open. An open (exclusive) end is

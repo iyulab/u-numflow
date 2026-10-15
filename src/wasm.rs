@@ -40,7 +40,7 @@ use wasm_bindgen::prelude::*;
 use crate::transforms::TransformError;
 use crate::wire::{
     check_finite, check_kind, check_probability, distribution_refusal, interval_set_from, whole,
-    Bound, Field, Refusal,
+    Bound, Code, Field, Refusal,
 };
 
 /// One element of a JS number array, as found.
@@ -65,7 +65,7 @@ fn numbers_from(
             Element::Number(x) if x.is_finite() => out.push(x),
             Element::Number(x) => {
                 return Err(Refusal {
-                    code: "value_not_finite",
+                    code: Code::ValueNotFinite,
                     message: format!("{parameter}[{i}]: expected a finite number, got {x}"),
                     fields: vec![
                         ("parameter", Field::Str(parameter)),
@@ -75,7 +75,7 @@ fn numbers_from(
             }
             Element::Other(kind) => {
                 return Err(Refusal {
-                    code: "malformed_input",
+                    code: Code::MalformedInput,
                     message: format!("{parameter}[{i}]: expected a number, got {kind}"),
                     fields: vec![
                         ("parameter", Field::Str(parameter)),
@@ -96,7 +96,7 @@ fn read_numbers(value: &JsValue, parameter: &'static str) -> Result<Vec<f64>, Re
     }
     if !js_sys::Array::is_array(value) {
         return Err(Refusal {
-            code: "malformed_input",
+            code: Code::MalformedInput,
             message: format!("{parameter}: expected an array of numbers or a Float64Array"),
             fields: vec![("parameter", Field::Str(parameter))],
         });
@@ -118,7 +118,7 @@ fn at_least(data: Vec<f64>, min: usize) -> Result<Vec<f64>, Refusal> {
         Ok(data)
     } else {
         Err(Refusal {
-            code: "insufficient_data",
+            code: Code::InsufficientData,
             message: format!("data: at least {min} values are needed, got {}", data.len()),
             fields: vec![
                 ("parameter", Field::Str("data")),
@@ -136,7 +136,7 @@ fn lambda_range_refusal(lambda_min: f64, lambda_max: f64) -> Refusal {
     for (parameter, x) in [("lambda_min", lambda_min), ("lambda_max", lambda_max)] {
         if !x.is_finite() {
             return Refusal {
-                code: "value_not_finite",
+                code: Code::ValueNotFinite,
                 message: format!("{parameter} must be a finite number, got {x}"),
                 fields: vec![("parameter", Field::Str(parameter))],
             };
@@ -159,7 +159,7 @@ impl From<TransformError> for Refusal {
         let data = ("parameter", Field::Str("data"));
         let (code, fields) = match e {
             TransformError::NonPositiveData { index, value } => (
-                "non_positive_data",
+                Code::NonPositiveData,
                 vec![
                     data,
                     ("index", Field::Num(index as f64)),
@@ -167,11 +167,11 @@ impl From<TransformError> for Refusal {
                 ],
             ),
             TransformError::NonFiniteData { index } => (
-                "value_not_finite",
+                Code::ValueNotFinite,
                 vec![data, ("index", Field::Num(index as f64))],
             ),
             TransformError::InsufficientData { min, got } => (
-                "insufficient_data",
+                Code::InsufficientData,
                 vec![
                     data,
                     ("min", Field::Num(min as f64)),
@@ -181,8 +181,8 @@ impl From<TransformError> for Refusal {
             TransformError::InvalidLambdaRange { .. } => {
                 unreachable!("refused with its range above")
             }
-            TransformError::InvalidTransform => ("invalid_transform", Vec::new()),
-            TransformError::InvalidInverse => ("invalid_inverse", Vec::new()),
+            TransformError::InvalidTransform => (Code::InvalidTransform, Vec::new()),
+            TransformError::InvalidInverse => (Code::InvalidInverse, Vec::new()),
         };
         Refusal {
             code,
@@ -194,11 +194,73 @@ impl From<TransformError> for Refusal {
 
 /// Every refusal crosses into JavaScript as an `Error` whose `message` is the
 /// readable text, with `code` and the fields set on it as properties.
+/// A refusal reason: the `code` an `Error` carries and the fields that can
+/// stand beside it.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, tsify::Tsify)]
+#[serde(deny_unknown_fields)]
+struct RefusalCode {
+    code: String,
+    fields: Vec<String>,
+}
+
+/// A violation a checker reports. This package has no checker; the type is
+/// here so every engine's [`Codes`] has one shape.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, tsify::Tsify)]
+#[serde(deny_unknown_fields)]
+struct ViolationCode {
+    code: String,
+    fields: Vec<String>,
+    checkers: Vec<String>,
+}
+
+/// What this package can answer with besides a result: every refusal
+/// `code`, and no violations -- it has no checker.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, tsify::Tsify)]
+#[serde(deny_unknown_fields)]
+struct Codes {
+    refusals: Vec<RefusalCode>,
+    violations: Vec<ViolationCode>,
+}
+
+fn code_catalog() -> Codes {
+    Codes {
+        refusals: Code::ALL
+            .into_iter()
+            .map(|c| RefusalCode {
+                code: c.name().to_string(),
+                fields: c.fields().iter().map(|f| f.to_string()).collect(),
+            })
+            .collect(),
+        violations: vec![],
+    }
+}
+
+/// Every refusal `code` the functions of this package throw, with the fields
+/// that can come with it: `{ refusals: [{ code, fields }], violations: [] }`.
+///
+/// It is built from the table the refusals come from, so a caller that
+/// translates codes can check its list against the package's.
+#[wasm_bindgen(unchecked_return_type = "Codes")]
+pub fn codes() -> Result<JsValue, JsValue> {
+    serde_wasm_bindgen::to_value(&code_catalog()).map_err(|e| {
+        JsValue::from(Refusal {
+            code: Code::Internal,
+            message: format!("internal: {e}"),
+            fields: vec![],
+        })
+    })
+}
+
 impl From<Refusal> for JsValue {
     fn from(refusal: Refusal) -> JsValue {
+        debug_assert!(
+            refusal.fields_declared(),
+            "{} refusal with an undeclared field",
+            refusal.code.name()
+        );
         let err = js_sys::Error::new(&refusal.message);
         // `Reflect::set` on a freshly created ordinary object cannot fail.
-        let _ = js_sys::Reflect::set(&err, &"code".into(), &refusal.code.into());
+        let _ = js_sys::Reflect::set(&err, &"code".into(), &refusal.code.name().into());
         for (key, value) in refusal.fields {
             let value = match value {
                 Field::Num(n) => JsValue::from_f64(n),
@@ -229,7 +291,7 @@ pub fn mean(
     let data = read_numbers(&data, "data")?;
     if data.is_empty() {
         return Err(Refusal {
-            code: "empty_input",
+            code: Code::EmptyInput,
             message: "data: the mean of no values is undefined".to_string(),
             fields: vec![("parameter", Field::Str("data"))],
         }
@@ -335,7 +397,7 @@ pub fn estimate_lambda(
     })
     .map_err(|e| {
         Refusal {
-            code: "malformed_input",
+            code: Code::MalformedInput,
             message: e.to_string(),
             fields: vec![("parameter", Field::Str("result"))],
         }
@@ -494,7 +556,7 @@ fn find_non_finite(value: &JsValue, parameter: &str) -> Option<(String, f64)> {
 fn read_distribution(value: &JsValue) -> Result<crate::wire::Distribution, Refusal> {
     const P: &str = "distribution";
     let malformed = |message: String| Refusal {
-        code: "malformed_input",
+        code: Code::MalformedInput,
         message,
         fields: vec![("parameter", Field::Str(P))],
     };
@@ -506,7 +568,7 @@ fn read_distribution(value: &JsValue) -> Result<crate::wire::Distribution, Refus
     let kind = js_sys::Reflect::get(value, &"kind".into()).unwrap_or(JsValue::UNDEFINED);
     let Some(kind) = kind.as_string() else {
         return Err(Refusal {
-            code: "malformed_input",
+            code: Code::MalformedInput,
             message: format!("{P}.kind: expected a string naming the distribution"),
             fields: vec![("parameter", Field::Str("distribution.kind"))],
         });
@@ -514,7 +576,7 @@ fn read_distribution(value: &JsValue) -> Result<crate::wire::Distribution, Refus
     check_kind(&kind)?;
     if let Some((path, n)) = find_non_finite(value, P) {
         return Err(Refusal {
-            code: "value_not_finite",
+            code: Code::ValueNotFinite,
             message: format!("{path}: expected a finite number, got {n}"),
             fields: vec![("parameter", Field::Path(path))],
         });
@@ -550,7 +612,7 @@ pub fn distribution_moments(
         variance: d.variance(),
     };
     Ok(serde_wasm_bindgen::to_value(&dto).map_err(|e| Refusal {
-        code: "internal",
+        code: Code::Internal,
         message: e.to_string(),
         fields: Vec::new(),
     })?)
@@ -622,7 +684,7 @@ fn read_intervals(
     use wasm_bindgen::JsCast;
     if !js_sys::Array::is_array(value) {
         return Err(Refusal {
-            code: "malformed_input",
+            code: Code::MalformedInput,
             message: format!("{parameter}: expected an array of [start, end] pairs"),
             fields: vec![("parameter", Field::Str(parameter))],
         });
@@ -938,5 +1000,43 @@ mod tests {
             }
             .to_string()
         );
+    }
+}
+
+#[cfg(test)]
+mod code_catalog_tests {
+    use super::*;
+
+    /// The README's code tables list exactly the published vocabulary, so the
+    /// tables and `codes()` cannot drift apart.
+    #[test]
+    fn the_readme_documents_every_code_and_no_other() {
+        let readme = include_str!("../README.md");
+        let mut documented = std::collections::BTreeSet::new();
+        let mut in_table = false;
+        for line in readme.lines() {
+            if line.starts_with("| `code` |") {
+                in_table = true;
+                continue;
+            }
+            if !line.starts_with('|') {
+                in_table = false;
+                continue;
+            }
+            if in_table && !line.starts_with("|---") {
+                let first = line.split('|').nth(1).expect("a cell");
+                for code in first.split('·') {
+                    documented.insert(code.trim().trim_matches('`').to_string());
+                }
+            }
+        }
+        let catalog = code_catalog();
+        let published: std::collections::BTreeSet<String> = catalog
+            .refusals
+            .iter()
+            .map(|r| r.code.clone())
+            .chain(catalog.violations.iter().map(|v| v.code.clone()))
+            .collect();
+        assert_eq!(documented, published);
     }
 }

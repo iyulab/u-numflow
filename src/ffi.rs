@@ -44,7 +44,7 @@ use serde_json::{json, Value};
 use crate::collections::IntervalSet;
 use crate::wire::{
     check_finite, check_kind, check_probability, distribution_refusal, interval_set_from, whole,
-    Distribution, DistributionSpec, Field, Refusal,
+    Code, Distribution, DistributionSpec, Field, Refusal,
 };
 
 const ERR_NULL: i32 = -1;
@@ -61,7 +61,7 @@ fn malformed(parameter: &'static str, message: String) -> Failure {
     Failure(
         ERR_PARSE,
         Refusal {
-            code: "malformed_input",
+            code: Code::MalformedInput,
             message,
             fields: vec![("parameter", Field::Str(parameter))],
         },
@@ -126,9 +126,14 @@ fn handle(
 }
 
 fn error_body(r: Refusal) -> Value {
+    debug_assert!(
+        r.fields_declared(),
+        "{} refusal with an undeclared field",
+        r.code.name()
+    );
     let mut body = serde_json::Map::new();
     body.insert("error".into(), json!(r.message));
-    body.insert("code".into(), json!(r.code));
+    body.insert("code".into(), json!(r.code.name()));
     for (k, v) in r.fields {
         body.insert(k.into(), field_json(v));
     }

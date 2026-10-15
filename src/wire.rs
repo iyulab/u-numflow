@@ -38,14 +38,105 @@ pub(crate) enum Field {
     Null,
 }
 
+/// Every reason a function refuses with: the stable `code` a refusal carries,
+/// and the fields that can stand beside it. A [`Refusal`] holds one of these,
+/// so the published list ([`Code::ALL`]) is the list the crate refuses from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Code {
+    MalformedInput,
+    ValueNotFinite,
+    ParameterOutOfRange,
+    UnknownOption,
+    ReversedInterval,
+    EmptyInput,
+    InsufficientData,
+    NonPositiveData,
+    InvalidTransform,
+    InvalidInverse,
+    Internal,
+}
+
+impl Code {
+    #[cfg_attr(not(feature = "wasm"), allow(dead_code))]
+    pub(crate) const ALL: [Code; 11] = [
+        Code::MalformedInput,
+        Code::ValueNotFinite,
+        Code::ParameterOutOfRange,
+        Code::UnknownOption,
+        Code::ReversedInterval,
+        Code::EmptyInput,
+        Code::InsufficientData,
+        Code::NonPositiveData,
+        Code::InvalidTransform,
+        Code::InvalidInverse,
+        Code::Internal,
+    ];
+
+    pub(crate) fn name(self) -> &'static str {
+        match self {
+            Code::MalformedInput => "malformed_input",
+            Code::ValueNotFinite => "value_not_finite",
+            Code::ParameterOutOfRange => "parameter_out_of_range",
+            Code::UnknownOption => "unknown_option",
+            Code::ReversedInterval => "reversed_interval",
+            Code::EmptyInput => "empty_input",
+            Code::InsufficientData => "insufficient_data",
+            Code::NonPositiveData => "non_positive_data",
+            Code::InvalidTransform => "invalid_transform",
+            Code::InvalidInverse => "invalid_inverse",
+            Code::Internal => "internal",
+        }
+    }
+
+    /// The fields a refusal with this code can carry besides `code`.
+    pub(crate) fn fields(self) -> &'static [&'static str] {
+        match self {
+            Code::MalformedInput => &["parameter", "index"],
+            Code::ValueNotFinite => &["parameter", "index"],
+            Code::ParameterOutOfRange => &[
+                "parameter",
+                "min",
+                "max",
+                "exclusive_min",
+                "exclusive_max",
+                "got",
+            ],
+            Code::UnknownOption => &["parameter", "got", "expected"],
+            Code::ReversedInterval => &["parameter", "index"],
+            Code::EmptyInput => &["parameter"],
+            Code::InsufficientData => &["parameter", "min", "got"],
+            Code::NonPositiveData => &["parameter", "index", "got"],
+            Code::InvalidTransform => &[],
+            Code::InvalidInverse => &[],
+            Code::Internal => &[],
+        }
+    }
+}
+
+impl PartialEq<&str> for Code {
+    fn eq(&self, other: &&str) -> bool {
+        self.name() == *other
+    }
+}
+
 /// A refusal on its way to a caller: readable text, a stable `code`, and the
 /// values behind it. WebAssembly throws it as an `Error` with those properties;
 /// the C ABI writes it as `{"error": text, "code": …, …fields}`.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Refusal {
-    pub(crate) code: &'static str,
+    pub(crate) code: Code,
     pub(crate) message: String,
     pub(crate) fields: Vec<(&'static str, Field)>,
+}
+
+impl Refusal {
+    /// Whether every field is one its code declares -- checked where a refusal
+    /// leaves the crate, so a field missing from [`Code::fields`] fails a test.
+    pub(crate) fn fields_declared(&self) -> bool {
+        self.fields
+            .iter()
+            .all(|(k, _)| self.code.fields().contains(k))
+    }
 }
 
 /// One end of the range an argument must fall in.
@@ -104,7 +195,7 @@ impl Refusal {
         }
         fields.push(("got", Field::Num(got)));
         Refusal {
-            code: "parameter_out_of_range",
+            code: Code::ParameterOutOfRange,
             message,
             fields,
         }
@@ -131,7 +222,7 @@ pub(crate) fn check_probability(p: f64) -> Result<(), Refusal> {
 pub(crate) fn check_finite(name: &'static str, x: f64) -> Result<(), Refusal> {
     if x.is_nan() {
         Err(Refusal {
-            code: "value_not_finite",
+            code: Code::ValueNotFinite,
             message: format!("{name} must be a number, got NaN"),
             fields: vec![("parameter", Field::Str(name))],
         })
@@ -149,14 +240,14 @@ pub(crate) fn check_finite(name: &'static str, x: f64) -> Result<(), Refusal> {
 pub(crate) fn whole(parameter: &'static str, x: f64, max: f64) -> Result<f64, Refusal> {
     if !x.is_finite() {
         return Err(Refusal {
-            code: "value_not_finite",
+            code: Code::ValueNotFinite,
             message: format!("{parameter} must be a finite number, got {x}"),
             fields: vec![("parameter", Field::Str(parameter))],
         });
     }
     if x.fract() != 0.0 {
         return Err(Refusal {
-            code: "malformed_input",
+            code: Code::MalformedInput,
             message: format!("{parameter} must be a whole number, got {x}"),
             fields: vec![("parameter", Field::Str(parameter))],
         });
@@ -188,7 +279,7 @@ pub(crate) fn interval_set_from(
             [start, end] => pairs.push((start, end)),
             _ => {
                 return Err(Refusal {
-                    code: "malformed_input",
+                    code: Code::MalformedInput,
                     message: format!(
                         "{parameter}[{i}]: expected [start, end], got {} numbers",
                         row.len()
@@ -200,7 +291,7 @@ pub(crate) fn interval_set_from(
     }
     crate::collections::IntervalSet::from_intervals(pairs).map_err(|e| match e {
         crate::collections::IntervalError::Reversed { index } => Refusal {
-            code: "reversed_interval",
+            code: Code::ReversedInterval,
             message: format!("{parameter}[{index}]: start is after end"),
             fields: vec![
                 ("parameter", Field::Str(parameter)),
@@ -209,7 +300,7 @@ pub(crate) fn interval_set_from(
         },
         // Unreachable: every number was checked finite while reading.
         crate::collections::IntervalError::NotFinite { index } => Refusal {
-            code: "value_not_finite",
+            code: Code::ValueNotFinite,
             message: format!("{parameter}[{index}]: a bound is not finite"),
             fields: vec![
                 ("parameter", Field::Str(parameter)),
@@ -225,7 +316,7 @@ pub(crate) fn check_kind(kind: &str) -> Result<(), Refusal> {
         return Ok(());
     }
     Err(Refusal {
-        code: "unknown_option",
+        code: Code::UnknownOption,
         message: format!(
             "distribution.kind: unknown distribution \"{kind}\"; expected one of {}",
             KINDS.join(", ")
@@ -245,7 +336,7 @@ pub(crate) fn distribution_refusal(e: DistributionError) -> Refusal {
     let message = format!("{P}: {e}");
     match e {
         DistributionError::NotFinite { parameter } => Refusal {
-            code: "value_not_finite",
+            code: Code::ValueNotFinite,
             message,
             fields: vec![("parameter", Field::Path(format!("{P}.{parameter}")))],
         },

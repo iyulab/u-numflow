@@ -8,6 +8,19 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ## [Unreleased]
 
+### Added
+
+- `codes()` (WebAssembly): every refusal `code` the package throws, with the
+  fields that can come with it -- `{ refusals: [{ code, fields }], violations:
+  [] }`, the shape every engine package shares -- built from the table the
+  refusals are built from, so a caller that translates codes can check its list
+  against the package's.
+
+### Fixed
+
+- The README lists `invalid_inverse` and `internal`, which the package throws;
+  a test keeps the table and `codes()` equal.
+
 ## [UNumflow 0.5.0] - 2026-10-14
 
 The .NET client only; the crate is unchanged at 0.12.0.
