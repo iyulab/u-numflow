@@ -8,6 +8,10 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-10-16
+
+The .NET client is `UNumflow` 0.7.0.
+
 ### Added
 
 - `units` — units of measure: a `Unit` is a dimension (integer exponents of the
