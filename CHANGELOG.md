@@ -8,6 +8,10 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ## [Unreleased]
 
+## [0.13.1] - 2026-10-16
+
+The .NET client is unchanged (`UNumflow` 0.6.0).
+
 ### Fixed
 
 - A result the package fails to hand back to JavaScript is refused as
