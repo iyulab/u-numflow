@@ -32,6 +32,7 @@ pub mod random;
 pub mod special;
 pub mod stats;
 pub mod transforms;
+pub mod units;
 
 #[cfg(feature = "ffi")]
 pub mod ffi;

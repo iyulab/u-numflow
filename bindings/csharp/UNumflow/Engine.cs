@@ -78,6 +78,7 @@ public sealed record Codes(IReadOnlyList<RefusalCode> Refusals, IReadOnlyList<Vi
     RespectNullableAnnotations = true,
     RespectRequiredConstructorParameters = true)]
 [JsonSerializable(typeof(Codes))]
+[JsonSerializable(typeof(UnitInfo))]
 internal sealed partial class NumflowJson : JsonSerializerContext;
 
 /// <summary>One JSON request to the native library, one JSON body back.</summary>

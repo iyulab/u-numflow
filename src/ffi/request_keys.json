@@ -318,6 +318,55 @@
         "a": {},
         "b": {}
       }
+    },
+    "unumflow_unit_convert": {
+      "properties": {
+        "definitions": {
+          "items": {
+            "properties": {
+              "factor": {},
+              "offset": {},
+              "symbol": {},
+              "unit": {}
+            }
+          }
+        },
+        "from": {},
+        "to": {},
+        "value": {}
+      }
+    },
+    "unumflow_unit_convert_difference": {
+      "properties": {
+        "definitions": {
+          "items": {
+            "properties": {
+              "factor": {},
+              "offset": {},
+              "symbol": {},
+              "unit": {}
+            }
+          }
+        },
+        "from": {},
+        "to": {},
+        "value": {}
+      }
+    },
+    "unumflow_unit_info": {
+      "properties": {
+        "definitions": {
+          "items": {
+            "properties": {
+              "factor": {},
+              "offset": {},
+              "symbol": {},
+              "unit": {}
+            }
+          }
+        },
+        "unit": {}
+      }
     }
   }
 }

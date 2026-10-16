@@ -24,6 +24,7 @@ u-numflow provides foundational mathematical, statistical, and probabilistic bui
 | `random` | Seeded RNG, Fisher-Yates shuffle, weighted sampling, random subset selection |
 | `distributions::Sample` | Random variates from every continuous distribution — `sample(&mut rng)` and reproducible `sample_n(n, seed)`; inversion where the quantile is direct, Marsaglia–Tsang for the gamma family (Gamma, χ², Beta, PERT); uniforms from the open interval (0, 1), so no variate is infinite |
 | `collections` | Specialized data structures: Union-Find with path compression and union-by-rank; `IntervalSet` — unions of half-open intervals with union, intersection, difference, clip and a measure that counts overlapping input once |
+| `units` | Units of measure: dimensional analysis over the seven SI base quantities, UCUM-syntax unit expressions (`kW.h`, `m/s2`, `J/(kg.K)`), conversion of readings (with a scale's offset — 20 °C is 293.15 K) and of differences (without — a rise of 20 °C is a rise of 20 K); the SI built in, every other unit defined by the caller |
 
 ## Design Philosophy
 
@@ -85,6 +86,31 @@ let week = IntervalSet::from_intervals([(0.0, 168.0)]).unwrap();
 let up = week.difference(&planned.union(&unplanned));
 assert_eq!(up.measure(), 138.0);
 ```
+
+```rust
+// Units: the SI is built in; a unit whose size varies by convention is yours to define
+use u_numflow::units::Units;
+let mut units = Units::si();
+units.define("cal_IT", 4.1868, "J", 0.0).unwrap(); // the international calorie
+units.define("toe", 1e7, "kcal_IT", 0.0).unwrap();  // tonne of oil equivalent
+assert!((units.convert(1.0, "toe", "GJ").unwrap() - 41.868).abs() < 1e-9);
+assert!((units.convert(20.0, "Cel", "K").unwrap() - 293.15).abs() < 1e-9); // a reading
+assert_eq!(units.convert_difference(20.0, "Cel", "K").unwrap(), 20.0);    // a change
+assert!(units.convert(1.0, "m3", "kg").is_err());                         // volume is not mass
+```
+
+Unit expressions follow UCUM's case-sensitive syntax: an atom with an optional
+decimal prefix (`km`, `kW`, `uA` — `u` is micro), an integer exponent after it
+(`m3`, `s-2`), `.` for a product and `/` for a quotient read left to right
+(`kg/m.s` is `(kg/m)·s`), parentheses, integer factors (`1000.m`), and `{…}`
+annotations, which have no effect (`m3{gas}`). Built in: the SI base units
+(`m`, `g`, `s`, `A`, `K`, `mol`, `cd`), the 22 derived units with special names
+(`N`, `Pa`, `J`, `W`, `Cel`, …), `min`, `h`, `d`, `L`/`l`, `t`, and the prefixes
+`Q` … `q`. No unit table beyond the SI is embedded: the calorie (three
+definitions, up to 0.07 % apart), the tonne of oil equivalent, imperial units
+and the normal cubic metre are the caller's `define` calls, so the crate never
+picks one convention silently. A scale with an offset (`Cel`) stands alone — a
+prefix, exponent or product on it is refused.
 
 `IntervalSet<T>` works over `f32`, `f64` and every primitive integer type. Its
 measure has the type of a distance — the unsigned type of the same width for
@@ -210,6 +236,35 @@ const up = interval_difference([[0, 168]], down);          // [[30, 168]]
 console.log(interval_measure(up));                         // 138
 ```
 
+Units of measure — `from`, `to` and `unit` are unit expressions (UCUM syntax, see the
+Rust section above) over the SI and the optional `definitions`, an array of
+`UnitDefinitionSpec` `{ symbol, unit, factor?, offset? }` (`symbol` = `factor` × `unit`,
+plus `offset` SI units at its zero; `factor` defaults to 1, `offset` to 0; a definition
+may use the ones before it):
+
+| Function | Returns |
+|---|---|
+| `unit_convert(value, from, to, definitions?)` | A reading converted — 20 `Cel` is 293.15 `K` |
+| `unit_convert_difference(value, from, to, definitions?)` | An amount of change converted — the offset cancels: a rise of 20 `Cel` is a rise of 20 `K` |
+| `unit_info(unit, definitions?)` | `UnitInfo` `{ dimension, exponents, scale, offset }` — the dimension in SI base units (`"kg.m2.s-2"`; exponents of m, kg, s, A, K, mol, cd) and `value_in_si = value · scale + offset`. Two units convert into each other exactly when their dimensions are equal |
+
+```js
+const { unit_convert, unit_convert_difference, unit_info } = require("@iyulab/u-numflow");
+const energy = [
+  { symbol: "cal_IT", unit: "J", factor: 4.1868 },
+  { symbol: "toe", unit: "kcal_IT", factor: 1e7 },
+];
+console.log(unit_convert(1, "Gcal_IT", "GJ", energy));     // 4.1868
+console.log(unit_convert(20, "Cel", "K"));                 // 293.15
+console.log(unit_convert_difference(20, "Cel", "K"));      // 20
+console.log(unit_info("toe", energy).dimension);           // "kg.m2.s-2"
+try {
+  unit_convert(1, "m3", "kg");
+} catch (err) {
+  console.log(err.code, err.parameter, err.expected, err.got); // dimension_mismatch to m3 kg
+}
+```
+
 `codes()` returns every refusal `code` the functions throw, with the fields that
 can come with it — `{ refusals: [{ code, fields }], violations: [] }` — built from
 the table the refusals come from; the table below explains each. The C library
@@ -231,11 +286,15 @@ try {
 
 | `code` | Fields | Meaning |
 |---|---|---|
-| `parameter_out_of_range` | `parameter`, `min`, `max`, `got`; `exclusive_min` / `exclusive_max` on an open end | `p` not strictly inside (0, 1) (`exclusive_min` 0, `exclusive_max` 1), or a degrees of freedom that is not a finite number `> 0` (`exclusive_min` 0); a distribution parameter that must be `> 0` (`exclusive_min` 0; `parameter` is its path, e.g. `distribution.sigma`), or that falls outside the range the others leave it: `distribution.max` not above `min` (`exclusive_min` = `min`), `distribution.mode` outside `[min, max]` (`min`, `max`); `estimate_lambda`'s `lambda_min` not below `lambda_max` (`exclusive_max` = `lambda_max`); a whole `n` or `seed` outside its range, a negative one included (`min` 0, `max`) |
+| `parameter_out_of_range` | `parameter`, `min`, `max`, `got`; `exclusive_min` / `exclusive_max` on an open end | `p` not strictly inside (0, 1) (`exclusive_min` 0, `exclusive_max` 1), or a degrees of freedom that is not a finite number `> 0` (`exclusive_min` 0); a distribution parameter that must be `> 0` (`exclusive_min` 0; `parameter` is its path, e.g. `distribution.sigma`), or that falls outside the range the others leave it: `distribution.max` not above `min` (`exclusive_min` = `min`), `distribution.mode` outside `[min, max]` (`min`, `max`); `estimate_lambda`'s `lambda_min` not below `lambda_max` (`exclusive_max` = `lambda_max`); a whole `n` or `seed` outside its range, a negative one included (`min` 0, `max`); a unit definition's `factor` not `> 0` (`parameter` `definitions[i].factor`, `exclusive_min` 0) |
 | `unknown_option` | `parameter`, `got`, `expected` | A `distribution.kind` the crate does not have |
-| `malformed_input` | `parameter`, `index` (or absent) | A `data` argument that is not an array or `Float64Array`, or an element that is not a number; a `distribution` that is not an object with a string `kind`, lacks a parameter or has one its kind does not take; an interval row that is not two numbers (`parameter` is its path, e.g. `a[2]`); an `n` or `seed` with a fraction ("must be a whole number") |
+| `malformed_input` | `parameter`, `index` (or absent) | A `data` argument that is not an array or `Float64Array`, or an element that is not a number; a `distribution` that is not an object with a string `kind`, lacks a parameter or has one its kind does not take; an interval row that is not two numbers (`parameter` is its path, e.g. `a[2]`); an `n` or `seed` with a fraction ("must be a whole number"); a unit expression that does not parse (`from`, `to`, `unit`, `definitions[i].unit`), a definition symbol that is empty, starts with a digit or holds an operator character (`definitions[i].symbol`), or a definition of the wrong shape (`definitions[i]`) |
+| `unknown_unit` | `parameter`, `got` | A unit symbol that is neither built in nor defined, nor a prefix on one — `got` is the symbol (`hr` in `kW.hr`) |
+| `dimension_mismatch` | `parameter`, `expected`, `got` | `unit_convert` between units of different dimensions — `parameter` is `to`, `expected` the dimension of `from` and `got` that of `to`, both in SI base units (`m3`, `kg`) |
+| `invalid_option` | `parameter` | A scale with an offset (`Cel`, or a defined one) given a prefix, an exponent or a product — it has a meaning only alone |
+| `duplicate_id` | `parameter`, `id`, `index` | A unit definition whose `symbol` is already a unit (built in or defined before) — `index` is the definition's position |
 | `reversed_interval` | `parameter`, `index` | An interval row with start > end — refused, not swapped |
-| `value_not_finite` | `parameter`, `index` for an array element | A NaN argument, an infinite `n`, `seed`, `lambda_min` or `lambda_max`, or a NaN or infinity in any `data` array or interval row (`parameter` is the row's path) |
+| `value_not_finite` | `parameter`, `index` for an array element | A NaN argument, an infinite `n`, `seed`, `lambda_min` or `lambda_max`, or a NaN or infinity in any `data` array or interval row (`parameter` is the row's path); a NaN or infinite `value` to convert or definition `factor` / `offset` |
 | `empty_input` | `parameter` | `mean` of no values |
 | `non_positive_data` | `parameter`, `index`, `got` | Box-Cox data with a value `≤ 0` — `index` is the first such value |
 | `insufficient_data` | `parameter`, `min`, `got` | Fewer values than the function needs (`std_dev`/`variance` 2, Box-Cox 2) |

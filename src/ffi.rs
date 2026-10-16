@@ -30,9 +30,13 @@
 //! | `unumflow_interval_measure` | `{intervals}` | `{"value"}` |
 //! | `unumflow_interval_contains` | `{intervals, t}` | `{"value": bool}` |
 //! | `unumflow_interval_union` / `_intersection` / `_difference` | `{a, b}` | `{"intervals": ...}` |
+//! | `unumflow_unit_convert` / `_convert_difference` | `{value, from, to, definitions?}` | `{"value"}` |
+//! | `unumflow_unit_info` | `{unit, definitions?}` | `{"dimension", "exponents", "scale", "offset"}` |
 //!
 //! `distribution` is `{"kind": "weibull", "shape": 2, "scale": 10}` — the
-//! same specification as the WebAssembly `DistributionSpec`.
+//! same specification as the WebAssembly `DistributionSpec`. `definitions` is
+//! `[{"symbol": "cal_IT", "unit": "J", "factor": 4.1868}, ...]` — units the
+//! caller adds to the SI for that request (`factor` default 1, `offset` 0).
 
 use std::ffi::{CStr, CString};
 use std::panic;
@@ -43,8 +47,9 @@ use serde_json::{json, Value};
 
 use crate::collections::IntervalSet;
 use crate::wire::{
-    check_finite, check_kind, check_probability, distribution_refusal, interval_set_from, whole,
-    Code, Distribution, DistributionSpec, Field, Refusal,
+    check_finite, check_kind, check_probability, convert_units, distribution_refusal,
+    interval_set_from, unit_at, units_from, whole, Code, Distribution, DistributionSpec, Field,
+    Refusal, UnitDefinitionSpec, UnitInfo,
 };
 
 const ERR_NULL: i32 = -1;
@@ -227,6 +232,26 @@ struct Two {
     b: Vec<Vec<f64>>,
 }
 
+/// `{value, from, to, definitions?}`.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Convert {
+    value: f64,
+    from: String,
+    to: String,
+    #[serde(default)]
+    definitions: Vec<UnitDefinitionSpec>,
+}
+
+/// `{unit, definitions?}`.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Info {
+    unit: String,
+    #[serde(default)]
+    definitions: Vec<UnitDefinitionSpec>,
+}
+
 fn required(name: &'static str, v: Option<f64>) -> Result<f64, Failure> {
     v.ok_or_else(|| malformed(name, format!("request: missing field `{name}`")))
 }
@@ -356,6 +381,38 @@ export!(
     }
 );
 
+export!(
+    /// A reading `value` in `from`, in `to` (20 `Cel` is 293.15 `K`).
+    unumflow_unit_convert,
+    |text| {
+        let r: Convert = parse(text)?;
+        let value = convert_units(r.value, &r.from, &r.to, &r.definitions, false).map_err(refused)?;
+        Ok(json!({ "value": value }))
+    }
+);
+
+export!(
+    /// An amount of change `value` in `from`, in `to` (a rise of 20 `Cel` is
+    /// a rise of 20 `K`).
+    unumflow_unit_convert_difference,
+    |text| {
+        let r: Convert = parse(text)?;
+        let value = convert_units(r.value, &r.from, &r.to, &r.definitions, true).map_err(refused)?;
+        Ok(json!({ "value": value }))
+    }
+);
+
+export!(
+    /// What the unit expression `unit` stands for.
+    unumflow_unit_info,
+    |text| {
+        let r: Info = parse(text)?;
+        let units = units_from(&r.definitions).map_err(refused)?;
+        let info = UnitInfo::from(unit_at(&units, &r.unit, "unit").map_err(refused)?);
+        Ok(serde_json::to_value(info).expect("a unit info serializes"))
+    }
+);
+
 /// Releases a string this library wrote.
 ///
 /// # Safety
@@ -441,6 +498,126 @@ mod tests {
         assert_eq!(s, 0);
         assert_eq!(a["values"].as_array().unwrap().len(), 4);
         assert_eq!(a, b, "same seed, same values");
+    }
+
+    #[test]
+    fn unit_round_trip() {
+        let energy = r#""definitions": [
+            {"symbol": "cal_IT", "unit": "J", "factor": 4.1868},
+            {"symbol": "toe", "unit": "kcal_IT", "factor": 1e7},
+            {"symbol": "Nm3", "unit": "m3"}
+        ]"#;
+        let (s, b) = call(
+            unumflow_unit_convert,
+            &format!(r#"{{"value": 1, "from": "Gcal_IT", "to": "GJ", {energy}}}"#),
+        );
+        assert_eq!(s, 0, "{b}");
+        assert!((b["value"].as_f64().unwrap() - 4.1868).abs() < 1e-12);
+        let (_, b) = call(
+            unumflow_unit_convert,
+            r#"{"value": 20, "from": "Cel", "to": "K"}"#,
+        );
+        assert!((b["value"].as_f64().unwrap() - 293.15).abs() < 1e-9);
+        let (_, b) = call(
+            unumflow_unit_convert_difference,
+            r#"{"value": 20, "from": "Cel", "to": "K"}"#,
+        );
+        assert_eq!(b["value"], json!(20.0));
+        let (s, b) = call(
+            unumflow_unit_info,
+            &format!(r#"{{"unit": "toe", {energy}}}"#),
+        );
+        assert_eq!(s, 0, "{b}");
+        assert_eq!(b["dimension"], json!("kg.m2.s-2"));
+        assert_eq!(b["exponents"], json!([2, 1, -2, 0, 0, 0, 0]));
+        assert!((b["scale"].as_f64().unwrap() - 4.1868e10).abs() < 1.0);
+        assert_eq!(b["offset"], json!(0.0));
+    }
+
+    #[test]
+    fn unit_refusals_name_their_place() {
+        let (s, b) = call(
+            unumflow_unit_convert,
+            r#"{"value": 1, "from": "m3", "to": "kg"}"#,
+        );
+        assert_eq!(s, ERR_REFUSED);
+        assert_eq!(
+            (&b["code"], &b["parameter"], &b["expected"], &b["got"]),
+            (
+                &json!("dimension_mismatch"),
+                &json!("to"),
+                &json!("m3"),
+                &json!("kg")
+            )
+        );
+        let (_, b) = call(
+            unumflow_unit_convert,
+            r#"{"value": 1, "from": "kW.hr", "to": "J"}"#,
+        );
+        assert_eq!(
+            (&b["code"], &b["parameter"], &b["got"]),
+            (&json!("unknown_unit"), &json!("from"), &json!("hr"))
+        );
+        let (_, b) = call(
+            unumflow_unit_convert,
+            r#"{"value": 1, "from": "kCel", "to": "K"}"#,
+        );
+        assert_eq!(
+            (&b["code"], &b["parameter"]),
+            (&json!("invalid_option"), &json!("from"))
+        );
+        let (_, b) = call(
+            unumflow_unit_convert,
+            r#"{"value": 1, "from": "m", "to": "m//s"}"#,
+        );
+        assert_eq!(
+            (&b["code"], &b["parameter"]),
+            (&json!("malformed_input"), &json!("to"))
+        );
+        let (_, b) = call(
+            unumflow_unit_convert,
+            r#"{"value": 1, "from": "m", "to": "m",
+                "definitions": [{"symbol": "x", "unit": "m"}, {"symbol": "x", "unit": "s"}]}"#,
+        );
+        assert_eq!(
+            (&b["code"], &b["parameter"], &b["id"], &b["index"]),
+            (
+                &json!("duplicate_id"),
+                &json!("definitions[1].symbol"),
+                &json!("x"),
+                &json!(1.0)
+            )
+        );
+        let (_, b) = call(
+            unumflow_unit_info,
+            r#"{"unit": "m", "definitions": [{"symbol": "x", "unit": "m", "factor": 0}]}"#,
+        );
+        assert_eq!(
+            (&b["code"], &b["parameter"], &b["exclusive_min"], &b["got"]),
+            (
+                &json!("parameter_out_of_range"),
+                &json!("definitions[0].factor"),
+                &json!(0.0),
+                &json!(0.0)
+            )
+        );
+        let (_, b) = call(
+            unumflow_unit_info,
+            r#"{"unit": "m", "definitions": [{"symbol": "x", "unit": "later"}]}"#,
+        );
+        assert_eq!(
+            (&b["code"], &b["parameter"], &b["got"]),
+            (
+                &json!("unknown_unit"),
+                &json!("definitions[0].unit"),
+                &json!("later")
+            )
+        );
+        let (s, b) = call(
+            unumflow_unit_convert,
+            r#"{"value": 1, "from": "m", "to": "m", "definitions": [{"symbol": "x"}]}"#,
+        );
+        assert_eq!((s, &b["code"]), (ERR_PARSE, &json!("malformed_input")));
     }
 
     #[test]

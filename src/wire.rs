@@ -9,6 +9,7 @@ use crate::distributions::{
     BetaDistribution, ChiSquared, DistributionError, Exponential, GammaDistribution, LogNormal,
     Normal, Pert, Sample, Triangular, Uniform, Weibull,
 };
+use crate::units::{Unit, UnitError, Units};
 
 /// The `kind` names a [`DistributionSpec`] accepts, in declaration order.
 pub(crate) const KINDS: &[&str] = &[
@@ -53,6 +54,10 @@ pub(crate) enum Code {
     NonPositiveData,
     InvalidTransform,
     InvalidInverse,
+    UnknownUnit,
+    DimensionMismatch,
+    InvalidOption,
+    DuplicateId,
     Internal,
 }
 
@@ -101,7 +106,7 @@ pub(crate) fn code_catalog() -> Codes {
 }
 
 impl Code {
-    pub(crate) const ALL: [Code; 11] = [
+    pub(crate) const ALL: [Code; 15] = [
         Code::MalformedInput,
         Code::ValueNotFinite,
         Code::ParameterOutOfRange,
@@ -112,6 +117,10 @@ impl Code {
         Code::NonPositiveData,
         Code::InvalidTransform,
         Code::InvalidInverse,
+        Code::UnknownUnit,
+        Code::DimensionMismatch,
+        Code::InvalidOption,
+        Code::DuplicateId,
         Code::Internal,
     ];
 
@@ -127,6 +136,10 @@ impl Code {
             Code::NonPositiveData => "non_positive_data",
             Code::InvalidTransform => "invalid_transform",
             Code::InvalidInverse => "invalid_inverse",
+            Code::UnknownUnit => "unknown_unit",
+            Code::DimensionMismatch => "dimension_mismatch",
+            Code::InvalidOption => "invalid_option",
+            Code::DuplicateId => "duplicate_id",
             Code::Internal => "internal",
         }
     }
@@ -151,6 +164,10 @@ impl Code {
             Code::NonPositiveData => &["parameter", "index", "got"],
             Code::InvalidTransform => &[],
             Code::InvalidInverse => &[],
+            Code::UnknownUnit => &["parameter", "got"],
+            Code::DimensionMismatch => &["parameter", "expected", "got"],
+            Code::InvalidOption => &["parameter"],
+            Code::DuplicateId => &["parameter", "id", "index"],
             Code::Internal => &[],
         }
     }
@@ -406,6 +423,174 @@ pub(crate) fn distribution_refusal(e: DistributionError) -> Refusal {
             message,
         ),
     }
+}
+
+// ── Units ─────────────────────────────────────────────────────────────────
+
+fn one() -> f64 {
+    1.0
+}
+
+/// A unit the caller defines: `symbol` = `factor` × `unit` (+ `offset` SI
+/// units at its zero, for a scale such as a Fahrenheit degree).
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct UnitDefinitionSpec {
+    /// The new symbol, e.g. `cal_IT`.
+    pub(crate) symbol: String,
+    /// What it is a multiple of, as a unit expression, e.g. `J`.
+    pub(crate) unit: String,
+    /// How many `unit` one `symbol` is (default 1, `> 0`).
+    #[serde(default = "one")]
+    #[cfg_attr(feature = "wasm", tsify(optional))]
+    pub(crate) factor: f64,
+    /// SI value at the symbol's zero (default 0).
+    #[serde(default)]
+    #[cfg_attr(feature = "wasm", tsify(optional))]
+    pub(crate) offset: f64,
+}
+
+/// What a unit expression stands for.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+pub(crate) struct UnitInfo {
+    /// The dimension in SI base units, e.g. `kg.m2.s-2` (`1` for a pure number).
+    pub(crate) dimension: String,
+    /// Exponents of m, kg, s, A, K, mol, cd.
+    pub(crate) exponents: [i32; 7],
+    /// Size of one unit in coherent SI units.
+    pub(crate) scale: f64,
+    /// SI value of the unit's zero (0 except for scales such as `Cel`).
+    pub(crate) offset: f64,
+}
+
+impl From<Unit> for UnitInfo {
+    fn from(u: Unit) -> Self {
+        UnitInfo {
+            dimension: u.dimension.to_string(),
+            exponents: u.dimension.0,
+            scale: u.scale,
+            offset: u.offset,
+        }
+    }
+}
+
+/// The SI units plus `definitions`, each refused at its own path
+/// (`definitions[2].unit`).
+pub(crate) fn units_from(definitions: &[UnitDefinitionSpec]) -> Result<Units, Refusal> {
+    let mut units = Units::si();
+    for (i, d) in definitions.iter().enumerate() {
+        units
+            .define(&d.symbol, d.factor, &d.unit, d.offset)
+            .map_err(|e| {
+                let at = |key: &str| Field::Path(format!("definitions[{i}].{key}"));
+                let place = match &e {
+                    UnitError::NotFinite { parameter } => at(parameter),
+                    UnitError::NonPositiveFactor { .. } => at("factor"),
+                    UnitError::DuplicateSymbol { .. } | UnitError::InvalidSymbol { .. } => {
+                        at("symbol")
+                    }
+                    _ => at("unit"),
+                };
+                let refusal = unit_refusal(e, place);
+                match refusal.code {
+                    Code::DuplicateId => Refusal {
+                        fields: refusal
+                            .fields
+                            .into_iter()
+                            .chain([("index", Field::Num(i as f64))])
+                            .collect(),
+                        ..refusal
+                    },
+                    _ => refusal,
+                }
+            })?;
+    }
+    Ok(units)
+}
+
+/// `expression` read against `units`, refused at `parameter`.
+pub(crate) fn unit_at(
+    units: &Units,
+    expression: &str,
+    parameter: &'static str,
+) -> Result<Unit, Refusal> {
+    units
+        .parse(expression)
+        .map_err(|e| unit_refusal(e, Field::Str(parameter)))
+}
+
+/// A unit error as a refusal at `parameter`.
+pub(crate) fn unit_refusal(e: UnitError, parameter: Field) -> Refusal {
+    let message = match &parameter {
+        Field::Str(p) => format!("{p}: {e}"),
+        Field::Path(p) => format!("{p}: {e}"),
+        _ => e.to_string(),
+    };
+    let (code, fields) = match e {
+        UnitError::Malformed { .. } | UnitError::InvalidSymbol { .. } => {
+            (Code::MalformedInput, vec![("parameter", parameter)])
+        }
+        UnitError::UnknownSymbol { symbol, .. } => (
+            Code::UnknownUnit,
+            vec![("parameter", parameter), ("got", Field::Path(symbol))],
+        ),
+        UnitError::OffsetCombined { .. } => (Code::InvalidOption, vec![("parameter", parameter)]),
+        UnitError::DimensionMismatch { from, to } => (
+            Code::DimensionMismatch,
+            vec![
+                ("parameter", parameter),
+                ("expected", Field::Path(from.to_string())),
+                ("got", Field::Path(to.to_string())),
+            ],
+        ),
+        UnitError::DuplicateSymbol { symbol } => (
+            Code::DuplicateId,
+            vec![("parameter", parameter), ("id", Field::Path(symbol))],
+        ),
+        UnitError::NotFinite { .. } => (Code::ValueNotFinite, vec![("parameter", parameter)]),
+        UnitError::NonPositiveFactor { got } => {
+            return Refusal::out_of_range(
+                parameter,
+                Bound::Open(0.0),
+                Bound::Unbounded,
+                got,
+                message,
+            )
+        }
+    };
+    Refusal {
+        code,
+        message,
+        fields,
+    }
+}
+
+/// A conversion of `value` from `from` to `to`, a reading or (`difference`)
+/// an amount of change, with each failure at its own parameter.
+pub(crate) fn convert_units(
+    value: f64,
+    from: &str,
+    to: &str,
+    definitions: &[UnitDefinitionSpec],
+    difference: bool,
+) -> Result<f64, Refusal> {
+    if !value.is_finite() {
+        return Err(Refusal {
+            code: Code::ValueNotFinite,
+            message: format!("value must be a finite number, got {value}"),
+            fields: vec![("parameter", Field::Str("value"))],
+        });
+    }
+    let units = units_from(definitions)?;
+    let (from, to) = (unit_at(&units, from, "from")?, unit_at(&units, to, "to")?);
+    let converted = if difference {
+        from.difference_to(value, &to)
+    } else {
+        from.convert_to(value, &to)
+    };
+    converted.map_err(|e| unit_refusal(e, Field::Str("to")))
 }
 
 // ── Distributions ─────────────────────────────────────────────────────────

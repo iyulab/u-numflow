@@ -8,6 +8,23 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ## [Unreleased]
 
+### Added
+
+- `units` — units of measure: a `Unit` is a dimension (integer exponents of the
+  seven SI base quantities) with `value_in_si = value · scale + offset`.
+  `Units::si()` reads UCUM-syntax expressions (`kW.h`, `m/s2`, `J/(kg.K)`,
+  prefixes, exponents, parentheses, integer factors, `{…}` annotations) over
+  the SI base units, the 22 named derived units, `min` `h` `d` `L` `t` and the
+  decimal prefixes; `define` adds a unit as a multiple of an expression (with
+  an offset for a scale). `convert` converts a reading (20 °C → 293.15 K),
+  `convert_difference` an amount of change (20 °C → 20 K); units of different
+  dimensions are refused. No unit table beyond the SI is embedded.
+- WebAssembly `unit_convert`, `unit_convert_difference`, `unit_info`
+  (`UnitDefinitionSpec`, `UnitInfo`); C ABI `unumflow_unit_convert`,
+  `unumflow_unit_convert_difference`, `unumflow_unit_info`; .NET `Units`,
+  `UnitDefinition`, `UnitInfo`. New refusal codes: `unknown_unit`,
+  `dimension_mismatch`, `invalid_option`, `duplicate_id`.
+
 ## [0.13.1] - 2026-10-16
 
 The .NET client is unchanged (`UNumflow` 0.6.0).

@@ -12,6 +12,11 @@
 - **Interval sets**: unions of half-open intervals `[start, end)` with
   `Union`, `Intersection`, `Difference`, `Clip`, `Contains` and a `Measure`
   that counts every point once, however much the input overlapped
+- **Units of measure**: conversion between units of the same dimension —
+  UCUM expressions (`kW.h`, `m/s2`, `Gcal_IT`) over the SI and the units you
+  define (`UnitDefinition`), readings (`Convert` — 20 °C is 293.15 K) and
+  differences (`ConvertDifference` — a rise of 20 °C is 20 K), and `Info` for a
+  unit's dimension
 - **Parameters are checked when you create a distribution** — a
   `Distribution` that exists is a valid one
 
@@ -39,6 +44,16 @@ var planned = IntervalSet.From([(0, 24)]);
 var unplanned = IntervalSet.From([(10, 30)]);
 var week = IntervalSet.From([(0, 168)]);
 double upHours = week.Difference(planned.Union(unplanned)).Measure; // 138
+
+// Units: the SI is built in; a unit whose size varies by convention is yours to define
+var units = new Units([
+    new UnitDefinition("cal_IT", "J", 4.1868),
+    new UnitDefinition("toe", "kcal_IT", 1e7),
+]);
+double gj = units.Convert(1, "Gcal_IT", "GJ");            // 4.1868
+double kelvin = Units.Si.Convert(20, "Cel", "K");          // 293.15 — a reading
+double rise = Units.Si.ConvertDifference(20, "Cel", "K");  // 20 — a change
+string dimension = units.Info("toe").Dimension;            // "kg.m2.s-2"
 ```
 
 ## Errors
@@ -62,11 +77,15 @@ catch (NumflowException e)
 
 | `ErrorCode` | Details | Meaning |
 |---|---|---|
-| `parameter_out_of_range` | `parameter`, `min`, `max`, `got`; `exclusive_min` / `exclusive_max` on an open end | A distribution parameter that must be `> 0` (`exclusive_min` 0); `distribution.max` not above `min` (`exclusive_min` = `min`) or `distribution.mode` outside `[min, max]` (`min`, `max`); `p` not strictly inside (0, 1) (`exclusive_min` 0, `exclusive_max` 1); a `seed` outside `[0, 2⁵³]` (`min`, `max`) |
-| `value_not_finite` | `parameter`, `index` | A NaN or infinite parameter or interval bound |
+| `parameter_out_of_range` | `parameter`, `min`, `max`, `got`; `exclusive_min` / `exclusive_max` on an open end | A distribution parameter or unit definition `factor` that must be `> 0` (`exclusive_min` 0); `distribution.max` not above `min` (`exclusive_min` = `min`) or `distribution.mode` outside `[min, max]` (`min`, `max`); `p` not strictly inside (0, 1) (`exclusive_min` 0, `exclusive_max` 1); a `seed` outside `[0, 2⁵³]` (`min`, `max`) |
+| `value_not_finite` | `parameter`, `index` | A NaN or infinite parameter, interval bound, value to convert or definition factor/offset |
 | `reversed_interval` | `parameter`, `index` | An interval with start > end — refused, not swapped |
 | `unknown_option` | `parameter`, `got`, `expected` | A distribution kind the engine does not have |
-| `malformed_input` | `parameter` | A request the engine could not read |
+| `malformed_input` | `parameter` | A request the engine could not read; a unit expression that does not parse, or a definition symbol that cannot be one |
+| `unknown_unit` | `parameter`, `got` | A unit symbol neither built in nor defined — `got` is the symbol |
+| `dimension_mismatch` | `parameter`, `expected`, `got` | A conversion between dimensions — `expected` that of `from`, `got` that of `to` (`m3`, `kg`) |
+| `invalid_option` | `parameter` | A scale such as `Cel` given a prefix, exponent or product |
+| `duplicate_id` | `parameter`, `id`, `index` | A definition whose symbol is already a unit |
 | `internal` | — | An engine fault |
 
 `Numflow.Codes` returns the engine's codes as data — `Codes(Refusals, Violations)`, each

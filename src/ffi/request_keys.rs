@@ -299,6 +299,7 @@ fn ep(name: &'static str, entry: Entry, base: Value) -> (&'static str, Entry, Va
 fn entry_points() -> Vec<(&'static str, Entry, Value)> {
     let normal = json!({ "kind": "normal", "mu": 0, "sigma": 1 });
     let intervals = json!([[0, 2], [1, 4], [6, 7]]);
+    let calorie = json!([{ "symbol": "cal_IT", "unit": "J", "factor": 4.1868, "offset": 0 }]);
     vec![
         ep(
             "unumflow_distribution_moments",
@@ -349,6 +350,21 @@ fn entry_points() -> Vec<(&'static str, Entry, Value)> {
             "unumflow_interval_difference",
             unumflow_interval_difference,
             json!({ "a": intervals, "b": [[3, 5]] }),
+        ),
+        ep(
+            "unumflow_unit_convert",
+            unumflow_unit_convert,
+            json!({ "value": 1, "from": "kcal_IT", "to": "J", "definitions": calorie }),
+        ),
+        ep(
+            "unumflow_unit_convert_difference",
+            unumflow_unit_convert_difference,
+            json!({ "value": 1, "from": "kcal_IT", "to": "J", "definitions": calorie }),
+        ),
+        ep(
+            "unumflow_unit_info",
+            unumflow_unit_info,
+            json!({ "unit": "kcal_IT", "definitions": calorie }),
         ),
     ]
 }

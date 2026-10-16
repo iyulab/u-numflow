@@ -36,6 +36,9 @@ public class RequestContractTests
     private static IntervalSet Set => IntervalSet.From([(0, 2), (1, 4), (6, 7)]);
     private static IntervalSet Other => IntervalSet.From([(3, 5)]);
 
+    /// <summary>A definition with every setting given.</summary>
+    private static Units Defined => new([new UnitDefinition("degF", "K", 5.0 / 9, 459.67 * 5 / 9)]);
+
     /// <summary>Every call with every setting it has given.</summary>
     private static readonly Dictionary<string, Action> Full = Distributions
         .Select(d => KeyValuePair.Create<string, Action>($"Distribution({d.Key})", () =>
@@ -54,6 +57,9 @@ public class RequestContractTests
             ["IntervalSet.Union"] = () => Set.Union(Other),
             ["IntervalSet.Intersection"] = () => Set.Intersection(Other),
             ["IntervalSet.Difference"] = () => Set.Difference(Other),
+            ["Units.Convert"] = () => Defined.Convert(1, "degF", "Cel"),
+            ["Units.ConvertDifference"] = () => Defined.ConvertDifference(1, "degF", "K"),
+            ["Units.Info"] = () => Defined.Info("degF"),
         })
         .ToDictionary();
 

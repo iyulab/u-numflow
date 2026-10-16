@@ -22,6 +22,8 @@
 //! - `interval_normalize(intervals)` · `interval_union(a, b)` ·
 //!   `interval_intersection(a, b)` · `interval_difference(a, b)` →
 //!   `[number, number][]` in normal form; `interval_measure(intervals)` → `f64`
+//! - `unit_convert(value, from, to, definitions?)` · `unit_convert_difference(…)`
+//!   → `f64`; `unit_info(unit, definitions?)` → `UnitInfo`
 //!
 //! Every `data` argument is a `number[]` or a `Float64Array`, read as sent: an
 //! element that is not a number (`null`, a string) is refused as
@@ -39,8 +41,9 @@ use wasm_bindgen::prelude::*;
 
 use crate::transforms::TransformError;
 use crate::wire::{
-    check_finite, check_kind, check_probability, distribution_refusal, interval_set_from, whole,
-    Bound, Code, Field, Refusal,
+    check_finite, check_kind, check_probability, convert_units, distribution_refusal,
+    interval_set_from, unit_at, units_from, whole, Bound, Code, Field, Refusal, UnitDefinitionSpec,
+    UnitInfo,
 };
 
 /// One element of a JS number array, as found.
@@ -740,6 +743,124 @@ pub fn interval_difference(
 ) -> Result<JsValue, JsValue> {
     let (a, b) = (read_intervals(&a, "a")?, read_intervals(&b, "b")?);
     Ok(intervals_to_js(&a.difference(&b)))
+}
+
+// ── Units ─────────────────────────────────────────────────────────────────
+
+/// A `definitions` argument, read as sent: each element is refused at its own
+/// path (`definitions[2]`, `definitions[2].factor`).
+fn read_definitions(value: Option<JsValue>) -> Result<Vec<UnitDefinitionSpec>, Refusal> {
+    use wasm_bindgen::JsCast;
+    let Some(value) = value.filter(|v| !v.is_null() && !v.is_undefined()) else {
+        return Ok(Vec::new());
+    };
+    if !js_sys::Array::is_array(&value) {
+        return Err(Refusal {
+            code: Code::MalformedInput,
+            message: "definitions: expected an array of { symbol, unit, factor?, offset? }"
+                .to_string(),
+            fields: vec![("parameter", Field::Str("definitions"))],
+        });
+    }
+    let array: &js_sys::Array = value.unchecked_ref();
+    array
+        .iter()
+        .enumerate()
+        .map(|(i, item)| {
+            let path = format!("definitions[{i}]");
+            if let Some((at, n)) = find_non_finite(&item, &path) {
+                return Err(Refusal {
+                    code: Code::ValueNotFinite,
+                    message: format!("{at}: expected a finite number, got {n}"),
+                    fields: vec![("parameter", Field::Path(at))],
+                });
+            }
+            serde_wasm_bindgen::from_value(item).map_err(|e| {
+                let text = e.to_string();
+                Refusal {
+                    code: Code::MalformedInput,
+                    message: format!("{path}: {}", text.trim_start_matches("Error: ")),
+                    fields: vec![("parameter", Field::Path(path))],
+                }
+            })
+        })
+        .collect()
+}
+
+/// A reading `value` in the unit `from`, in the unit `to`: 20 `Cel` is
+/// 293.15 `K`. Units are UCUM expressions (`kW.h`, `m/s2`, `J/(kg.K)`) over
+/// the SI and the `definitions` given — e.g.
+/// `[{ symbol: "cal_IT", unit: "J", factor: 4.1868 }]`.
+///
+/// # Errors
+/// `value_not_finite` (`parameter` `value`); `malformed_input` for an
+/// expression that does not parse or a definition of the wrong shape;
+/// `unknown_unit` (`parameter`, `got` = the symbol); `invalid_option` for a
+/// scale such as `Cel` with a prefix, exponent or product;
+/// `dimension_mismatch` (`parameter` `to`, `expected` = the dimension of
+/// `from`, `got` = that of `to`, both in SI base units); for a definition,
+/// `duplicate_id` (`id`, `index`) for a symbol already a unit and
+/// `parameter_out_of_range` for a `factor` not `> 0`, each at
+/// `definitions[i].…`.
+#[wasm_bindgen]
+pub fn unit_convert(
+    value: f64,
+    from: &str,
+    to: &str,
+    #[wasm_bindgen(unchecked_optional_param_type = "UnitDefinitionSpec[] | null")]
+    definitions: Option<JsValue>,
+) -> Result<f64, JsValue> {
+    Ok(convert_units(
+        value,
+        from,
+        to,
+        &read_definitions(definitions)?,
+        false,
+    )?)
+}
+
+/// An amount of change `value` in `from`, in `to`: the offset of a scale
+/// cancels, so a rise of 20 `Cel` is a rise of 20 `K`.
+///
+/// # Errors
+/// As [`unit_convert`].
+#[wasm_bindgen]
+pub fn unit_convert_difference(
+    value: f64,
+    from: &str,
+    to: &str,
+    #[wasm_bindgen(unchecked_optional_param_type = "UnitDefinitionSpec[] | null")]
+    definitions: Option<JsValue>,
+) -> Result<f64, JsValue> {
+    Ok(convert_units(
+        value,
+        from,
+        to,
+        &read_definitions(definitions)?,
+        true,
+    )?)
+}
+
+/// What the unit expression `unit` stands for: its dimension in SI base units
+/// (`"kg.m2.s-2"`, with the exponents of m, kg, s, A, K, mol, cd), and
+/// `scale` / `offset` with `value_in_si = value · scale + offset`. Two units
+/// convert into each other exactly when their dimensions are equal.
+///
+/// # Errors
+/// As [`unit_convert`] for `unit` (at `parameter` `unit`) and `definitions`.
+#[wasm_bindgen(unchecked_return_type = "UnitInfo")]
+pub fn unit_info(
+    unit: &str,
+    #[wasm_bindgen(unchecked_optional_param_type = "UnitDefinitionSpec[] | null")]
+    definitions: Option<JsValue>,
+) -> Result<JsValue, JsValue> {
+    let units = units_from(&read_definitions(definitions)?)?;
+    let info = UnitInfo::from(unit_at(&units, unit, "unit")?);
+    Ok(serde_wasm_bindgen::to_value(&info).map_err(|e| Refusal {
+        code: Code::Internal,
+        message: e.to_string(),
+        fields: Vec::new(),
+    })?)
 }
 
 #[cfg(test)]
