@@ -221,6 +221,7 @@ const CLOCK_AND_ENTROPY: &[&str] = &[
     "Math::random",
     "thread_rng",
     "rand::rng()",
+    "rand::random",
     "from_entropy",
     "from_os_rng",
     "OsRng",
@@ -230,7 +231,9 @@ const CLOCK_AND_ENTROPY: &[&str] = &[
 /// Every place under `src/` that reads a clock or draws unseeded randomness,
 /// as `(path from the crate root, call)`. A card calls an operation
 /// deterministic, or seeded, only where none of these is on its path; a
-/// crate's test pins this list so a new one cannot arrive unnoticed.
+/// crate's test pins this list so a new one cannot arrive unnoticed. It reads
+/// this crate's source only: a clock or randomness reached through a
+/// dependency is the card's to declare.
 pub fn clock_and_entropy_uses() -> Vec<(String, &'static str)> {
     let mut found = Vec::new();
     let mut dirs = vec![root().join("src")];
@@ -245,11 +248,20 @@ pub fn clock_and_entropy_uses() -> Vec<(String, &'static str)> {
                 continue;
             }
             let text = std::fs::read_to_string(&path).expect("a source file is readable");
-            let code: String = text
-                .lines()
-                .filter(|l| !l.trim_start().starts_with("//"))
-                .collect::<Vec<_>>()
-                .join("\n");
+            // Comments and `#[cfg(test)] mod … { … }` blocks are not paths an
+            // operation takes.
+            let mut kept = Vec::new();
+            let mut lines = text.lines().peekable();
+            while let Some(line) = lines.next() {
+                if line == "#[cfg(test)]" && lines.peek().is_some_and(|l| l.starts_with("mod ")) {
+                    lines.by_ref().find(|l| *l == "}");
+                    continue;
+                }
+                if !line.trim_start().starts_with("//") {
+                    kept.push(line);
+                }
+            }
+            let code = kept.join("\n");
             for needle in CLOCK_AND_ENTROPY {
                 if code.contains(needle) {
                     let rel = path.strip_prefix(root()).expect("under the crate root");
