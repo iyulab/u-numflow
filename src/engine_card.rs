@@ -55,6 +55,17 @@ pub fn optional(name: &'static str, schema: Schema) -> Arg {
     }
 }
 
+/// A string that is one of `names` -- for a field whose Rust type is a
+/// `String` (or a type from another crate) but whose values are a closed
+/// list; pass the table the binding parses or prints them from, so the
+/// schema cannot drift from it.
+#[allow(dead_code, reason = "this file is shared; not every binding has one")]
+pub fn string_enum<'a>(names: impl IntoIterator<Item = &'a str>) -> Schema {
+    let names: Vec<&str> = names.into_iter().collect();
+    Schema::try_from(json!({ "type": "string", "enum": names }))
+        .expect("an object is a schema")
+}
+
 struct Operation {
     id: &'static str,
     args: Vec<Arg>,
