@@ -215,7 +215,20 @@
         "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_unseeded_randomness"
       },
       "validation": {
-        "status": "none"
+        "status": "partial",
+        "checks": [
+          {
+            "claim": "Sample quantiles follow R-7 linear interpolation.",
+            "reference_kind": "reference_implementation",
+            "reference": "NumPy numpy.quantile (default linear method, R-7)",
+            "method": "compares the result with the reference's published or computed values",
+            "tolerance": "1e-12",
+            "test": "src/ffi.rs::tests::sample_statistics"
+          }
+        ],
+        "limits": [
+          "Checked against the references above for the cases those tests list; other arguments are not compared."
+        ]
       },
       "performance": {
         "status": "none",
@@ -251,7 +264,28 @@
         "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_unseeded_randomness"
       },
       "validation": {
-        "status": "none"
+        "status": "partial",
+        "checks": [
+          {
+            "claim": "The standard normal CDF matches the published table.",
+            "reference_kind": "literature",
+            "reference": "Abramowitz & Stegun (1964), Table 26.1",
+            "method": "compares the result with the reference's published or computed values",
+            "tolerance": "1e-6",
+            "test": "src/distributions.rs::tests::test_normal_cdf_reference_values"
+          },
+          {
+            "claim": "The lower tail keeps relative precision (computed from a direct erfc).",
+            "reference_kind": "reference_implementation",
+            "reference": "SciPy scipy.stats.norm (Cephes ndtr)",
+            "method": "compares the result with the reference's published or computed values",
+            "tolerance": "1e-13 relative",
+            "test": "src/special.rs::tests::test_sf_upper_tail_relative_precision"
+          }
+        ],
+        "limits": [
+          "Checked against the references above for the cases those tests list; other arguments are not compared."
+        ]
       },
       "performance": {
         "status": "none",
@@ -287,7 +321,20 @@
         "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_unseeded_randomness"
       },
       "validation": {
-        "status": "none"
+        "status": "partial",
+        "checks": [
+          {
+            "claim": "The standard normal upper tail keeps relative precision far into the tail.",
+            "reference_kind": "reference_implementation",
+            "reference": "SciPy scipy.stats.norm.sf (Cephes ndtr)",
+            "method": "compares the result with the reference's published or computed values",
+            "tolerance": "1e-13 relative",
+            "test": "src/special.rs::tests::test_sf_upper_tail_relative_precision"
+          }
+        ],
+        "limits": [
+          "Checked against the references above for the cases those tests list; other arguments are not compared."
+        ]
       },
       "performance": {
         "status": "none",
@@ -431,7 +478,20 @@
         "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_unseeded_randomness"
       },
       "validation": {
-        "status": "none"
+        "status": "partial",
+        "checks": [
+          {
+            "claim": "The standard normal quantile matches reference values.",
+            "reference_kind": "reference_implementation",
+            "reference": "SciPy scipy.stats.norm.ppf (Cephes ndtri)",
+            "method": "compares the result with the reference's published or computed values",
+            "tolerance": "1e-13",
+            "test": "src/special.rs::tests::test_inverse_reference_values"
+          }
+        ],
+        "limits": [
+          "Checked against the references above for the cases those tests list; other arguments are not compared."
+        ]
       },
       "performance": {
         "status": "none",
@@ -503,7 +563,20 @@
         "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_unseeded_randomness"
       },
       "validation": {
-        "status": "none"
+        "status": "partial",
+        "checks": [
+          {
+            "claim": "Student's t critical values match the published table.",
+            "reference_kind": "standard",
+            "reference": "NIST/SEMATECH e-Handbook of Statistical Methods, 1.3.6.7.2",
+            "method": "compares the result with the reference's published or computed values",
+            "tolerance": "5e-4",
+            "test": "src/special.rs::tests::test_t_quantile_nist_critical_values"
+          }
+        ],
+        "limits": [
+          "Checked against the references above for the cases those tests list; other arguments are not compared."
+        ]
       },
       "performance": {
         "status": "none",
@@ -647,7 +720,20 @@
         "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_unseeded_randomness"
       },
       "validation": {
-        "status": "none"
+        "status": "partial",
+        "checks": [
+          {
+            "claim": "Chi-squared critical values match the published table.",
+            "reference_kind": "standard",
+            "reference": "NIST/SEMATECH e-Handbook of Statistical Methods, 1.3.6.7.4",
+            "method": "compares the result with the reference's published or computed values",
+            "tolerance": "1e-3",
+            "test": "src/special.rs::tests::test_chi2_quantile_nist_critical_values"
+          }
+        ],
+        "limits": [
+          "Checked against the references above for the cases those tests list; other arguments are not compared."
+        ]
       },
       "performance": {
         "status": "none",
