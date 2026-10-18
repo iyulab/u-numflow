@@ -62,8 +62,7 @@ pub fn optional(name: &'static str, schema: Schema) -> Arg {
 #[allow(dead_code, reason = "this file is shared; not every binding has one")]
 pub fn string_enum<'a>(names: impl IntoIterator<Item = &'a str>) -> Schema {
     let names: Vec<&str> = names.into_iter().collect();
-    Schema::try_from(json!({ "type": "string", "enum": names }))
-        .expect("an object is a schema")
+    Schema::try_from(json!({ "type": "string", "enum": names })).expect("an object is a schema")
 }
 
 struct Operation {
