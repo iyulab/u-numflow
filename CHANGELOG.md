@@ -8,6 +8,11 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ## [Unreleased]
 
+## [0.14.1] - 2026-10-18
+
+The .NET client is `UNumflow` 0.8.0. The Rust API is unchanged: what is new are
+binding entry points to functions the crate already had.
+
 ### Added
 
 - Sample median and quantiles reach every binding: WebAssembly `median(data)`
