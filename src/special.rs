@@ -1838,3 +1838,88 @@ mod proptests {
         }
     }
 }
+
+/// Against SciPy 1.17.1 (`scipy.stats` call named at each value).
+#[cfg(test)]
+mod scipy_reference {
+    use super::*;
+
+    /// `got` within `rel` of `want`, relative (absolute below 1).
+    fn close(got: f64, want: f64, rel: f64, what: &str) {
+        let scale = want.abs().max(1.0);
+        assert!(
+            (got - want).abs() <= rel * scale,
+            "{what}: got {got}, reference {want} (relative tolerance {rel})"
+        );
+    }
+
+    #[test]
+    fn t_f_and_chi_squared_distributions_reproduce_scipy() {
+        // t.cdf(1.7, 6), t.cdf(-2.3, 3.5), t.cdf(0.4, 40)
+        close(
+            t_distribution_cdf(1.7, 6.0),
+            0.9299801726875513,
+            TOL,
+            "t cdf",
+        );
+        close(
+            t_distribution_cdf(-2.3, 3.5),
+            0.04619672248986906,
+            TOL,
+            "t cdf, fractional df",
+        );
+        close(
+            t_distribution_cdf(0.4, 40.0),
+            0.6543576534354631,
+            TOL,
+            "t cdf, df 40",
+        );
+        // f.cdf(2.5, 3, 12), f.cdf(0.7, 5, 7.5)
+        close(
+            f_distribution_cdf(2.5, 3.0, 12.0),
+            0.8908452876049937,
+            TOL,
+            "F cdf",
+        );
+        close(
+            f_distribution_cdf(0.7, 5.0, 7.5),
+            0.3600807359231225,
+            TOL,
+            "F cdf, fractional df",
+        );
+        // f.ppf(0.95, 3, 12), f.ppf(0.01, 5, 7.5)
+        close(
+            f_distribution_quantile(0.95, 3.0, 12.0),
+            3.490294819497605,
+            TOL,
+            "F quantile",
+        );
+        close(
+            f_distribution_quantile(0.01, 5.0, 7.5),
+            0.09645738537247153,
+            TOL,
+            "F quantile, low tail",
+        );
+        // chi2.cdf(7.3, 4), chi2.cdf(0.5, 2.5), chi2.cdf(30, 20)
+        close(
+            chi_squared_cdf(7.3, 4.0),
+            0.8791412511787876,
+            TOL,
+            "chi-squared cdf",
+        );
+        close(
+            chi_squared_cdf(0.5, 2.5),
+            0.13611637154141112,
+            TOL,
+            "chi-squared cdf, fractional k",
+        );
+        close(
+            chi_squared_cdf(30.0, 20.0),
+            0.9301463393005901,
+            TOL,
+            "chi-squared cdf, k 20",
+        );
+    }
+
+    const TOL: f64 = 1e-12;
+}

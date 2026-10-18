@@ -383,3 +383,35 @@ mod tests {
         }
     }
 }
+
+/// Against NumPy 2.4.6 (`numpy.fft.rfft`).
+#[cfg(test)]
+mod numpy_reference {
+    use super::*;
+
+    #[test]
+    fn rfft_of_an_odd_length_reproduces_numpy() {
+        // numpy.fft.rfft([0.5, 1.5, -0.25, 2.0, 0.0, -1.0, 3.5, 1.25, -0.75]) -- length 9,
+        // not a power of two. NumPy returns bins 0..=n/2; this rfft returns all
+        // n, the rest mirroring them (X[n-k] = conj(X[k])).
+        let got = rfft(&[0.5, 1.5, -0.25, 2.0, 0.0, -1.0, 3.5, 1.25, -0.75]);
+        let want = [
+            (6.75, 0.0),
+            (-0.5621258692079278, 0.9879574700745879),
+            (-3.8255009306546883, -2.3590377252790837),
+            (5.625, -4.113620667976083),
+            (-2.362373200137384, 0.5501191216763025),
+        ];
+        assert_eq!(got.len(), 9);
+        for (k, (re, im)) in want.into_iter().enumerate() {
+            let (g, mirror) = (got[k], got[(9 - k) % 9]);
+            assert!(
+                (g.re - re).abs() <= 1e-12 && (g.im - im).abs() <= 1e-12,
+                "bin {k}: got {} + {}i, NumPy {re} + {im}i",
+                g.re,
+                g.im
+            );
+            assert!((mirror.re - re).abs() <= 1e-12 && (mirror.im + im).abs() <= 1e-12);
+        }
+    }
+}

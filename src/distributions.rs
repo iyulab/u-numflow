@@ -2420,3 +2420,164 @@ mod proptests {
         }
     }
 }
+
+/// Against SciPy 1.17.1 (`scipy.stats` call named at each value).
+#[cfg(test)]
+mod scipy_reference {
+    use super::*;
+
+    /// `got` within `rel` of `want`, relative (absolute below 1).
+    fn close(got: f64, want: f64, rel: f64, what: &str) {
+        let scale = want.abs().max(1.0);
+        assert!(
+            (got - want).abs() <= rel * scale,
+            "{what}: got {got}, reference {want} (relative tolerance {rel})"
+        );
+    }
+
+    /// cdf at `x`, quantiles at 0.9 and 0.05, mean and variance.
+    fn check(name: &str, got: [f64; 5], want: [f64; 5]) {
+        for (k, what) in ["cdf", "quantile 0.9", "quantile 0.05", "mean", "variance"]
+            .iter()
+            .enumerate()
+        {
+            close(got[k], want[k], TOL, &format!("{name} {what}"));
+        }
+    }
+
+    const TOL: f64 = 1e-12;
+
+    #[test]
+    fn distributions_reproduce_scipy() {
+        let q = |v: Option<f64>| v.expect("p in (0, 1)");
+        // gamma(2.5, scale=1/1.5) at 1.9
+        let d = GammaDistribution::new(2.5, 1.5).expect("valid");
+        check(
+            "gamma",
+            [
+                d.cdf(1.9),
+                q(d.quantile(0.9)),
+                q(d.quantile(0.05)),
+                d.mean(),
+                d.variance(),
+            ],
+            [
+                0.6634870060490292,
+                3.0787856332603742,
+                0.3818254086872564,
+                1.6666666666666665,
+                1.111111111111111,
+            ],
+        );
+        // beta(2, 5) at 0.31
+        let d = BetaDistribution::new(2.0, 5.0).expect("valid");
+        check(
+            "beta",
+            [
+                d.cdf(0.31),
+                q(d.quantile(0.9)),
+                q(d.quantile(0.05)),
+                d.mean(),
+                d.variance(),
+            ],
+            [
+                0.6011720060050002,
+                0.5103163065514917,
+                0.06284989170835438,
+                0.2857142857142857,
+                0.025510204081632654,
+            ],
+        );
+        // lognorm(0.6, scale=exp(0.3)) at 2.2
+        let d = LogNormal::new(0.3, 0.6).expect("valid");
+        check(
+            "lognormal",
+            [
+                d.cdf(2.2),
+                q(d.quantile(0.9)),
+                q(d.quantile(0.05)),
+                d.mean(),
+                d.variance(),
+            ],
+            [
+                0.7922049070067374,
+                2.912264447792575,
+                0.5031272412449499,
+                1.6160744021928934,
+                1.1317249038377446,
+            ],
+        );
+        // weibull_min(1.8, scale=3) at 2.6
+        let d = Weibull::new(1.8, 3.0).expect("valid");
+        check(
+            "weibull",
+            [
+                d.cdf(2.6),
+                q(d.quantile(0.9)),
+                q(d.quantile(0.05)),
+                d.mean(),
+                d.variance(),
+            ],
+            [
+                0.5383363191570487,
+                4.7681750716635385,
+                0.5760872333171496,
+                2.6678601973566383,
+                2.3521754553818393,
+            ],
+        );
+        // chi2(5) at 6.1
+        let d = ChiSquared::new(5.0).expect("valid");
+        check(
+            "chi-squared",
+            [
+                d.cdf(6.1),
+                q(d.quantile(0.9)),
+                q(d.quantile(0.05)),
+                d.mean(),
+                d.variance(),
+            ],
+            [
+                0.7033902354279234,
+                9.236356899781123,
+                1.1454762260617692,
+                5.0,
+                10.0,
+            ],
+        );
+        // expon(scale=1/0.4) at 3.3
+        let d = Exponential::new(0.4).expect("valid");
+        check(
+            "exponential",
+            [
+                d.cdf(3.3),
+                q(d.quantile(0.9)),
+                q(d.quantile(0.05)),
+                d.mean(),
+                d.variance(),
+            ],
+            [
+                0.7328646980341496,
+                5.756462732485115,
+                0.12823323596887634,
+                2.5,
+                6.25,
+            ],
+        );
+    }
+
+    #[test]
+    fn beta_pert_reproduces_the_scaled_beta_of_scipy() {
+        // PERT(2, 5, 11, lambda 4) = beta(1 + 4·3/9, 1 + 4·6/9, loc=2, scale=9)
+        let d = Pert::with_shape(2.0, 5.0, 11.0, 4.0).expect("valid");
+        close(d.cdf(6.0), 0.6282128838968551, TOL, "PERT cdf");
+        close(
+            d.quantile(0.8).expect("p in (0, 1)"),
+            6.987355721564616,
+            TOL,
+            "PERT quantile 0.8",
+        );
+        close(d.mean(), 5.5, TOL, "PERT mean");
+        close(d.variance(), 2.749999999999999, TOL, "PERT variance");
+    }
+}

@@ -633,3 +633,66 @@ mod tests {
         assert!((y_t[1] - 0.75).abs() < 1e-10);
     }
 }
+
+/// Against SciPy 1.17.1 (`scipy.stats` call named at each value).
+#[cfg(test)]
+mod scipy_reference {
+    use super::*;
+
+    /// `got` within `rel` of `want`, relative (absolute below 1).
+    fn close(got: f64, want: f64, rel: f64, what: &str) {
+        let scale = want.abs().max(1.0);
+        assert!(
+            (got - want).abs() <= rel * scale,
+            "{what}: got {got}, reference {want} (relative tolerance {rel})"
+        );
+    }
+
+    const Y: [f64; 8] = [1.2, 2.5, 3.1, 4.8, 7.9, 12.4, 20.1, 33.0];
+
+    #[test]
+    fn box_cox_reproduces_scipy() {
+        // boxcox(Y, lmbda=0.5) and boxcox(Y, lmbda=0)
+        let half = [
+            0.1908902300206644,
+            1.1622776601683795,
+            1.5213633723318019,
+            2.3817804600413286,
+            3.6213877290220786,
+            5.042726744663604,
+            6.966604708583958,
+            9.489125293076057,
+        ];
+        let log = [
+            0.1823215567939546,
+            0.9162907318741551,
+            1.1314021114911006,
+            1.5686159179138452,
+            2.066862759472976,
+            2.517696472610991,
+            3.0007198150650303,
+            3.4965075614664802,
+        ];
+        for (lambda, want) in [(0.5, half), (0.0, log)] {
+            let got = box_cox(&Y, lambda).expect("positive data");
+            for (g, w) in got.iter().zip(want) {
+                close(*g, w, 1e-12, "Box-Cox transform");
+            }
+        }
+    }
+
+    #[test]
+    fn the_lambda_estimate_reproduces_scipy() {
+        // boxcox_normmax(Y, method="mle")
+        let est = estimate_lambda(&Y, -2.0, 2.0).expect("positive data");
+        close(
+            est.lambda,
+            -0.011387040305786467,
+            LAMBDA_TOL,
+            "maximum-likelihood lambda",
+        );
+        assert!(!est.at_bound);
+    }
+
+    const LAMBDA_TOL: f64 = 1e-6;
+}

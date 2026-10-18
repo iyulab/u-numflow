@@ -370,7 +370,20 @@
         "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_unseeded_randomness"
       },
       "validation": {
-        "status": "none"
+        "status": "partial",
+        "checks": [
+          {
+            "claim": "The transform at lambda 0.5 and 0 matches the reference.",
+            "reference_kind": "reference_implementation",
+            "reference": "SciPy 1.17.1, scipy.stats.boxcox(x, lmbda)",
+            "method": "compares every transformed value with the reference's",
+            "tolerance": "1e-12 (relative)",
+            "test": "src/transforms.rs::scipy_reference::box_cox_reproduces_scipy"
+          }
+        ],
+        "limits": [
+          "Checked against the reference above for the cases that test lists; other data are not compared."
+        ]
       },
       "performance": {
         "status": "none",
@@ -406,7 +419,20 @@
         "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_unseeded_randomness"
       },
       "validation": {
-        "status": "none"
+        "status": "partial",
+        "checks": [
+          {
+            "claim": "The maximum-likelihood lambda matches the reference.",
+            "reference_kind": "reference_implementation",
+            "reference": "SciPy 1.17.1, scipy.stats.boxcox_normmax(x, method='mle')",
+            "method": "compares the estimate with the reference's on the same sample",
+            "tolerance": "1e-6 (the golden-section search stops at a bracket of 1e-6; the measured difference is about 9e-8)",
+            "test": "src/transforms.rs::scipy_reference::the_lambda_estimate_reproduces_scipy"
+          }
+        ],
+        "limits": [
+          "Checked against the reference above for the cases that test lists; other data are not compared."
+        ]
       },
       "performance": {
         "status": "none",
@@ -442,7 +468,20 @@
         "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_unseeded_randomness"
       },
       "validation": {
-        "status": "none"
+        "status": "partial",
+        "checks": [
+          {
+            "claim": "Bins 0..=n/2 of a length-9 (not power-of-two) transform match the reference, and the rest are their conjugates.",
+            "reference_kind": "reference_implementation",
+            "reference": "NumPy 2.4.6, numpy.fft.rfft",
+            "method": "compares each bin's real and imaginary parts with the reference's",
+            "tolerance": "1e-12 (absolute)",
+            "test": "src/fourier.rs::numpy_reference::rfft_of_an_odd_length_reproduces_numpy"
+          }
+        ],
+        "limits": [
+          "Checked against the reference above for the cases that test lists; other data are not compared."
+        ]
       },
       "performance": {
         "status": "none",
@@ -527,7 +566,20 @@
         "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_unseeded_randomness"
       },
       "validation": {
-        "status": "none"
+        "status": "partial",
+        "checks": [
+          {
+            "claim": "The Student t CDF matches the reference, fractional degrees of freedom included.",
+            "reference_kind": "reference_implementation",
+            "reference": "SciPy 1.17.1, scipy.stats.t.cdf",
+            "method": "compares the value with the reference implementation's at the same arguments",
+            "tolerance": "1e-12",
+            "test": "src/special.rs::scipy_reference::t_f_and_chi_squared_distributions_reproduce_scipy"
+          }
+        ],
+        "limits": [
+          "Checked against the reference above for the cases that test lists; other data are not compared."
+        ]
       },
       "performance": {
         "status": "none",
@@ -612,7 +664,20 @@
         "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_unseeded_randomness"
       },
       "validation": {
-        "status": "none"
+        "status": "partial",
+        "checks": [
+          {
+            "claim": "The F CDF matches the reference, fractional degrees of freedom included.",
+            "reference_kind": "reference_implementation",
+            "reference": "SciPy 1.17.1, scipy.stats.f.cdf",
+            "method": "compares the value with the reference implementation's at the same arguments",
+            "tolerance": "1e-12",
+            "test": "src/special.rs::scipy_reference::t_f_and_chi_squared_distributions_reproduce_scipy"
+          }
+        ],
+        "limits": [
+          "Checked against the reference above for the cases that test lists; other data are not compared."
+        ]
       },
       "performance": {
         "status": "none",
@@ -648,7 +713,20 @@
         "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_unseeded_randomness"
       },
       "validation": {
-        "status": "none"
+        "status": "partial",
+        "checks": [
+          {
+            "claim": "The F quantile matches the reference in both tails.",
+            "reference_kind": "reference_implementation",
+            "reference": "SciPy 1.17.1, scipy.stats.f.ppf",
+            "method": "compares the value with the reference implementation's at the same arguments",
+            "tolerance": "1e-12 (relative)",
+            "test": "src/special.rs::scipy_reference::t_f_and_chi_squared_distributions_reproduce_scipy"
+          }
+        ],
+        "limits": [
+          "Checked against the reference above for the cases that test lists; other data are not compared."
+        ]
       },
       "performance": {
         "status": "none",
@@ -684,7 +762,20 @@
         "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_unseeded_randomness"
       },
       "validation": {
-        "status": "none"
+        "status": "partial",
+        "checks": [
+          {
+            "claim": "The chi-squared CDF matches the reference, fractional k included.",
+            "reference_kind": "reference_implementation",
+            "reference": "SciPy 1.17.1, scipy.stats.chi2.cdf",
+            "method": "compares the value with the reference implementation's at the same arguments",
+            "tolerance": "1e-12",
+            "test": "src/special.rs::scipy_reference::t_f_and_chi_squared_distributions_reproduce_scipy"
+          }
+        ],
+        "limits": [
+          "Checked against the reference above for the cases that test lists; other data are not compared."
+        ]
       },
       "performance": {
         "status": "none",
@@ -769,7 +860,20 @@
         "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_unseeded_randomness"
       },
       "validation": {
-        "status": "none"
+        "status": "partial",
+        "checks": [
+          {
+            "claim": "The mean and variance of the same distributions match the reference.",
+            "reference_kind": "reference_implementation",
+            "reference": "SciPy 1.17.1, scipy.stats mean and var of the same distributions",
+            "method": "compares the value with the reference implementation's at the same arguments",
+            "tolerance": "1e-12 (relative)",
+            "test": "src/distributions.rs::scipy_reference::distributions_reproduce_scipy"
+          }
+        ],
+        "limits": [
+          "Checked against the reference above for the cases that test lists; other data are not compared."
+        ]
       },
       "performance": {
         "status": "none",
@@ -805,7 +909,28 @@
         "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_unseeded_randomness"
       },
       "validation": {
-        "status": "none"
+        "status": "partial",
+        "checks": [
+          {
+            "claim": "The CDF of the gamma, beta, lognormal, Weibull, chi-squared, exponential and Beta-PERT distributions matches the reference.",
+            "reference_kind": "reference_implementation",
+            "reference": "SciPy 1.17.1, scipy.stats (gamma, beta, lognorm, weibull_min, chi2, expon; PERT as the scaled beta)",
+            "method": "compares the value with the reference implementation's at the same arguments",
+            "tolerance": "1e-12",
+            "test": "src/distributions.rs::scipy_reference::distributions_reproduce_scipy"
+          },
+          {
+            "claim": "The Beta-PERT CDF matches the scaled beta of the reference.",
+            "reference_kind": "reference_implementation",
+            "reference": "SciPy 1.17.1, scipy.stats.beta(1 + lambda (mode - min) / (max - min), 1 + lambda (max - mode) / (max - min), loc=min, scale=max - min)",
+            "method": "compares the value with the reference implementation's at the same arguments",
+            "tolerance": "1e-12",
+            "test": "src/distributions.rs::scipy_reference::beta_pert_reproduces_the_scaled_beta_of_scipy"
+          }
+        ],
+        "limits": [
+          "Checked against the reference above for the cases that test lists; other data are not compared."
+        ]
       },
       "performance": {
         "status": "none",
@@ -841,7 +966,28 @@
         "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_unseeded_randomness"
       },
       "validation": {
-        "status": "none"
+        "status": "partial",
+        "checks": [
+          {
+            "claim": "The quantiles at 0.9 and 0.05 of the same distributions match the reference.",
+            "reference_kind": "reference_implementation",
+            "reference": "SciPy 1.17.1, scipy.stats ppf of the same distributions",
+            "method": "compares the value with the reference implementation's at the same arguments",
+            "tolerance": "1e-12 (relative)",
+            "test": "src/distributions.rs::scipy_reference::distributions_reproduce_scipy"
+          },
+          {
+            "claim": "The Beta-PERT quantile matches the scaled beta of the reference.",
+            "reference_kind": "reference_implementation",
+            "reference": "SciPy 1.17.1, scipy.stats.beta (scaled, as for the CDF)",
+            "method": "compares the value with the reference implementation's at the same arguments",
+            "tolerance": "1e-12 (relative)",
+            "test": "src/distributions.rs::scipy_reference::beta_pert_reproduces_the_scaled_beta_of_scipy"
+          }
+        ],
+        "limits": [
+          "Checked against the reference above for the cases that test lists; other data are not compared."
+        ]
       },
       "performance": {
         "status": "none",
