@@ -359,6 +359,7 @@ pub fn box_cox(
 
 /// Output of [`estimate_lambda`]: `{ lambda, at_bound }`.
 #[derive(serde::Serialize, tsify::Tsify)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
 struct LambdaEstimateDto {
     lambda: f64,
     at_bound: bool,
@@ -587,6 +588,7 @@ fn read_distribution(value: &JsValue) -> Result<crate::wire::Distribution, Refus
 
 /// Mean and variance of a distribution.
 #[derive(serde::Serialize, tsify::Tsify)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
 struct MomentsDto {
     mean: f64,
     variance: f64,
@@ -1149,5 +1151,155 @@ mod code_catalog_tests {
             .chain(catalog.violations.iter().map(|v| v.code.clone()))
             .collect();
         assert_eq!(documented, published);
+    }
+}
+
+#[cfg(test)]
+mod engine_card_tests {
+    //! The engine card's operations are this binding's exports, and the
+    //! schemas it points at are generated from the types they read and return.
+
+    use super::{LambdaEstimateDto, MomentsDto};
+    use crate::engine_card::{arg, optional, Schemas};
+    use crate::wire::{DistributionSpec, UnitDefinitionSpec, UnitInfo};
+
+    fn schemas() -> Schemas {
+        let s = Schemas::new();
+        let numbers = || s.of::<Vec<f64>>();
+        for id in ["mean", "std_dev", "variance", "median"] {
+            s.op(id, vec![arg("data", numbers())], s.of::<f64>());
+        }
+        s.op(
+            "quantiles",
+            vec![arg("data", numbers()), arg("probabilities", numbers())],
+            numbers(),
+        );
+        for id in ["normal_cdf", "normal_sf"] {
+            s.op(id, vec![arg("x", s.of::<f64>())], s.of::<f64>());
+        }
+        s.op(
+            "box_cox",
+            vec![arg("data", numbers()), arg("lambda", s.of::<f64>())],
+            numbers(),
+        );
+        s.op(
+            "estimate_lambda",
+            vec![
+                arg("data", numbers()),
+                arg("lambda_min", s.of::<f64>()),
+                arg("lambda_max", s.of::<f64>()),
+            ],
+            s.of::<LambdaEstimateDto>(),
+        );
+        s.op("rfft", vec![arg("data", numbers())], numbers());
+        s.op(
+            "inverse_normal_cdf",
+            vec![arg("p", s.of::<f64>())],
+            s.of::<f64>(),
+        );
+        let two =
+            |a: &'static str, b: &'static str| vec![arg(a, s.of::<f64>()), arg(b, s.of::<f64>())];
+        s.op("t_distribution_cdf", two("t", "df"), s.of::<f64>());
+        s.op("t_distribution_quantile", two("p", "df"), s.of::<f64>());
+        s.op("chi_squared_cdf", two("x", "k"), s.of::<f64>());
+        s.op("chi_squared_quantile", two("p", "k"), s.of::<f64>());
+        let three = |a: &'static str| {
+            vec![
+                arg(a, s.of::<f64>()),
+                arg("df1", s.of::<f64>()),
+                arg("df2", s.of::<f64>()),
+            ]
+        };
+        s.op("f_distribution_cdf", three("x"), s.of::<f64>());
+        s.op("f_distribution_quantile", three("p"), s.of::<f64>());
+        let distribution = || arg("distribution", s.of::<DistributionSpec>());
+        s.op(
+            "distribution_moments",
+            vec![distribution()],
+            s.of::<MomentsDto>(),
+        );
+        s.op(
+            "distribution_cdf",
+            vec![distribution(), arg("x", s.of::<f64>())],
+            s.of::<f64>(),
+        );
+        s.op(
+            "distribution_quantile",
+            vec![distribution(), arg("p", s.of::<f64>())],
+            s.of::<f64>(),
+        );
+        s.op(
+            "distribution_sample",
+            vec![
+                distribution(),
+                arg("n", s.of::<u32>()),
+                arg("seed", s.of::<u64>()),
+            ],
+            numbers(),
+        );
+        let intervals = || s.of::<Vec<(f64, f64)>>();
+        s.op(
+            "interval_normalize",
+            vec![arg("intervals", intervals())],
+            intervals(),
+        );
+        s.op(
+            "interval_measure",
+            vec![arg("intervals", intervals())],
+            s.of::<f64>(),
+        );
+        for id in [
+            "interval_union",
+            "interval_intersection",
+            "interval_difference",
+        ] {
+            s.op(
+                id,
+                vec![arg("a", intervals()), arg("b", intervals())],
+                intervals(),
+            );
+        }
+        let definitions = || optional("definitions", s.of::<Option<Vec<UnitDefinitionSpec>>>());
+        for id in ["unit_convert", "unit_convert_difference"] {
+            s.op(
+                id,
+                vec![
+                    arg("value", s.of::<f64>()),
+                    arg("from", s.of::<String>()),
+                    arg("to", s.of::<String>()),
+                    definitions(),
+                ],
+                s.of::<f64>(),
+            );
+        }
+        s.op(
+            "unit_info",
+            vec![arg("unit", s.of::<String>()), definitions()],
+            s.of::<UnitInfo>(),
+        );
+        s
+    }
+
+    #[test]
+    fn the_schemas_are_generated_from_the_binding_types() {
+        schemas().check("u-numflow WebAssembly operations");
+    }
+
+    #[test]
+    fn every_export_is_a_card_operation_with_its_arguments() {
+        let s = schemas();
+        s.check_exports(include_str!("wasm.rs"));
+        s.check_card();
+    }
+
+    /// Nothing reads a clock or draws unseeded randomness: an operation with
+    /// no seed returns the same result for the same arguments, and
+    /// `distribution_sample` the same draws for the same seed.
+    #[test]
+    fn the_crate_reads_no_clock_and_no_unseeded_randomness() {
+        assert_eq!(
+            crate::engine_card::clock_and_entropy_uses(),
+            Vec::<(String, &str)>::new()
+        );
     }
 }

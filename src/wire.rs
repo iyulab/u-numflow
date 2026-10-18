@@ -503,6 +503,7 @@ fn one() -> f64 {
 /// units at its zero, for a scale such as a Fahrenheit degree).
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub(crate) struct UnitDefinitionSpec {
     /// The new symbol, e.g. `cal_IT`.
@@ -522,6 +523,7 @@ pub(crate) struct UnitDefinitionSpec {
 /// What a unit expression stands for.
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
 pub(crate) struct UnitInfo {
     /// The dimension in SI base units, e.g. `kg.m2.s-2` (`1` for a pure number).
     pub(crate) dimension: String,
@@ -666,6 +668,7 @@ pub(crate) fn convert_units(
 /// A distribution named by `kind`, with its parameters.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub(crate) enum DistributionSpec {
     /// Continuous uniform on `[min, max]`.

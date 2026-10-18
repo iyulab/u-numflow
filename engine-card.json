@@ -1,0 +1,1091 @@
+{
+  "$schema": "scripts/engine-card/engine-card.schema.json",
+  "card_version": 1,
+  "engine": {
+    "id": "u-numflow",
+    "summary": "Numerical primitives: descriptive statistics and sample quantiles, normal, t, F and chi-squared distribution functions, parametric distributions with seeded sampling, Box-Cox, real FFT of any length, half-open interval sets and unit conversion.",
+    "version": "0.14.1",
+    "license": "MIT",
+    "repository": "https://github.com/iyulab/u-numflow"
+  },
+  "surfaces": [
+    {
+      "kind": "crate",
+      "name": "u-numflow",
+      "package_version": "0.14.1",
+      "engine_version": "0.14.1",
+      "error_shape": "Err(...) of the module's error type where a function can refuse; statistics of too few values return None, and the bare distribution functions return NaN outside their domain."
+    },
+    {
+      "kind": "npm",
+      "name": "@iyulab/u-numflow",
+      "package_version": "0.14.1",
+      "engine_version": "0.14.1",
+      "wasm": true,
+      "note": "Numbers arrays may be passed as number[] or Float64Array; arguments and results are typed in the .d.ts. Bundler and Node targets; no bundler-less browser build.",
+      "error_shape": "A thrown Error whose code property is the code, with the fields (parameter, index, min, max, exclusive_min, got, expected, ...) as its other properties."
+    },
+    {
+      "kind": "nuget",
+      "name": "UNumflow",
+      "package_version": "0.8.0",
+      "engine_version": "0.14.1",
+      "note": "C ABI wrapper over the same wire layer; versioned on its own axis, not with the crate.",
+      "error_shape": "A NumflowException whose ErrorCode is the code, Parameter and Index the fields of those names, and Details the rest."
+    }
+  ],
+  "errors": {
+    "shape": "A refusal carries a stable snake_case 'code' and the fields listed for that code; how it arrives depends on the surface (error_shape).",
+    "source": {
+      "catalog": "code_catalog in src/wire.rs, built from the Code table the refusals are made from; published as codes() in WebAssembly, unumflow_codes() over the C ABI and Codes on .NET. What each code means is tabled in README.md, which a test holds equal to the catalog.",
+      "test": "src/wasm.rs::code_catalog_tests::the_readme_documents_every_code_and_no_other"
+    }
+  },
+  "operations": [
+    {
+      "id": "mean",
+      "summary": "The arithmetic mean of a non-empty sample (Kahan compensated summation).",
+      "input": {
+        "schema": "schemas/wasm.schema.json#/$defs/mean.input",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "output": {
+        "schema": "schemas/wasm.schema.json#/$defs/mean.output",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "contract_test": "src/wasm.rs::engine_card_tests::every_export_is_a_card_operation_with_its_arguments",
+      "hints": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      },
+      "effects": {
+        "filesystem": "none",
+        "network": "none",
+        "clock": "none",
+        "randomness": "none"
+      },
+      "determinism": {
+        "kind": "deterministic",
+        "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_unseeded_randomness"
+      },
+      "validation": {
+        "status": "none"
+      },
+      "performance": {
+        "status": "none",
+        "complexity": "O(n)."
+      }
+    },
+    {
+      "id": "std_dev",
+      "summary": "The sample standard deviation (denominator n - 1) of two or more values.",
+      "input": {
+        "schema": "schemas/wasm.schema.json#/$defs/std_dev.input",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "output": {
+        "schema": "schemas/wasm.schema.json#/$defs/std_dev.output",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "contract_test": "src/wasm.rs::engine_card_tests::every_export_is_a_card_operation_with_its_arguments",
+      "hints": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      },
+      "effects": {
+        "filesystem": "none",
+        "network": "none",
+        "clock": "none",
+        "randomness": "none"
+      },
+      "determinism": {
+        "kind": "deterministic",
+        "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_unseeded_randomness"
+      },
+      "validation": {
+        "status": "none"
+      },
+      "performance": {
+        "status": "none",
+        "complexity": "O(n)."
+      }
+    },
+    {
+      "id": "variance",
+      "summary": "The sample variance (denominator n - 1) of two or more values.",
+      "input": {
+        "schema": "schemas/wasm.schema.json#/$defs/variance.input",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "output": {
+        "schema": "schemas/wasm.schema.json#/$defs/variance.output",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "contract_test": "src/wasm.rs::engine_card_tests::every_export_is_a_card_operation_with_its_arguments",
+      "hints": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      },
+      "effects": {
+        "filesystem": "none",
+        "network": "none",
+        "clock": "none",
+        "randomness": "none"
+      },
+      "determinism": {
+        "kind": "deterministic",
+        "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_unseeded_randomness"
+      },
+      "validation": {
+        "status": "none"
+      },
+      "performance": {
+        "status": "none",
+        "complexity": "O(n)."
+      }
+    },
+    {
+      "id": "median",
+      "summary": "The median of a non-empty sample; an even count gives the mean of the middle two.",
+      "input": {
+        "schema": "schemas/wasm.schema.json#/$defs/median.input",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "output": {
+        "schema": "schemas/wasm.schema.json#/$defs/median.output",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "contract_test": "src/wasm.rs::engine_card_tests::every_export_is_a_card_operation_with_its_arguments",
+      "hints": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      },
+      "effects": {
+        "filesystem": "none",
+        "network": "none",
+        "clock": "none",
+        "randomness": "none"
+      },
+      "determinism": {
+        "kind": "deterministic",
+        "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_unseeded_randomness"
+      },
+      "validation": {
+        "status": "none"
+      },
+      "performance": {
+        "status": "none",
+        "complexity": "O(n log n) (sorts a copy)."
+      }
+    },
+    {
+      "id": "quantiles",
+      "summary": "Sample quantiles at each probability in [0, 1], in the order asked, by R-7 linear interpolation (Hyndman & Fan 1996; the default of R, NumPy and Excel).",
+      "input": {
+        "schema": "schemas/wasm.schema.json#/$defs/quantiles.input",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "output": {
+        "schema": "schemas/wasm.schema.json#/$defs/quantiles.output",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "contract_test": "src/wasm.rs::engine_card_tests::every_export_is_a_card_operation_with_its_arguments",
+      "hints": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      },
+      "effects": {
+        "filesystem": "none",
+        "network": "none",
+        "clock": "none",
+        "randomness": "none"
+      },
+      "determinism": {
+        "kind": "deterministic",
+        "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_unseeded_randomness"
+      },
+      "validation": {
+        "status": "none"
+      },
+      "performance": {
+        "status": "none",
+        "complexity": "O(n log n + m): one sort, then O(1) per probability."
+      }
+    },
+    {
+      "id": "normal_cdf",
+      "summary": "The standard normal CDF P(Z <= x), computed from a direct erfc so the lower tail keeps relative precision.",
+      "input": {
+        "schema": "schemas/wasm.schema.json#/$defs/normal_cdf.input",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "output": {
+        "schema": "schemas/wasm.schema.json#/$defs/normal_cdf.output",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "contract_test": "src/wasm.rs::engine_card_tests::every_export_is_a_card_operation_with_its_arguments",
+      "hints": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      },
+      "effects": {
+        "filesystem": "none",
+        "network": "none",
+        "clock": "none",
+        "randomness": "none"
+      },
+      "determinism": {
+        "kind": "deterministic",
+        "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_unseeded_randomness"
+      },
+      "validation": {
+        "status": "none"
+      },
+      "performance": {
+        "status": "none",
+        "complexity": "O(1)."
+      }
+    },
+    {
+      "id": "normal_sf",
+      "summary": "The standard normal survival function P(Z > x), computed directly so upper-tail probabilities keep their significant digits.",
+      "input": {
+        "schema": "schemas/wasm.schema.json#/$defs/normal_sf.input",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "output": {
+        "schema": "schemas/wasm.schema.json#/$defs/normal_sf.output",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "contract_test": "src/wasm.rs::engine_card_tests::every_export_is_a_card_operation_with_its_arguments",
+      "hints": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      },
+      "effects": {
+        "filesystem": "none",
+        "network": "none",
+        "clock": "none",
+        "randomness": "none"
+      },
+      "determinism": {
+        "kind": "deterministic",
+        "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_unseeded_randomness"
+      },
+      "validation": {
+        "status": "none"
+      },
+      "performance": {
+        "status": "none",
+        "complexity": "O(1)."
+      }
+    },
+    {
+      "id": "box_cox",
+      "summary": "The Box-Cox power transform of strictly positive data at a given lambda (log at lambda 0).",
+      "input": {
+        "schema": "schemas/wasm.schema.json#/$defs/box_cox.input",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "output": {
+        "schema": "schemas/wasm.schema.json#/$defs/box_cox.output",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "contract_test": "src/wasm.rs::engine_card_tests::every_export_is_a_card_operation_with_its_arguments",
+      "hints": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      },
+      "effects": {
+        "filesystem": "none",
+        "network": "none",
+        "clock": "none",
+        "randomness": "none"
+      },
+      "determinism": {
+        "kind": "deterministic",
+        "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_unseeded_randomness"
+      },
+      "validation": {
+        "status": "none"
+      },
+      "performance": {
+        "status": "none",
+        "complexity": "O(n)."
+      }
+    },
+    {
+      "id": "estimate_lambda",
+      "summary": "The Box-Cox lambda that maximizes the profile log-likelihood within [lambda_min, lambda_max] (golden-section search), and whether it lies on an end of that range.",
+      "input": {
+        "schema": "schemas/wasm.schema.json#/$defs/estimate_lambda.input",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "output": {
+        "schema": "schemas/wasm.schema.json#/$defs/estimate_lambda.output",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "contract_test": "src/wasm.rs::engine_card_tests::every_export_is_a_card_operation_with_its_arguments",
+      "hints": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      },
+      "effects": {
+        "filesystem": "none",
+        "network": "none",
+        "clock": "none",
+        "randomness": "none"
+      },
+      "determinism": {
+        "kind": "deterministic",
+        "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_unseeded_randomness"
+      },
+      "validation": {
+        "status": "none"
+      },
+      "performance": {
+        "status": "none",
+        "complexity": "O(n) per likelihood evaluation, a fixed number of evaluations."
+      }
+    },
+    {
+      "id": "rfft",
+      "summary": "The discrete Fourier transform of a real sequence of any length, as interleaved [re, im] pairs for all n bins (radix-2 for powers of two, Bluestein otherwise).",
+      "input": {
+        "schema": "schemas/wasm.schema.json#/$defs/rfft.input",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "output": {
+        "schema": "schemas/wasm.schema.json#/$defs/rfft.output",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "contract_test": "src/wasm.rs::engine_card_tests::every_export_is_a_card_operation_with_its_arguments",
+      "hints": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      },
+      "effects": {
+        "filesystem": "none",
+        "network": "none",
+        "clock": "none",
+        "randomness": "none"
+      },
+      "determinism": {
+        "kind": "deterministic",
+        "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_unseeded_randomness"
+      },
+      "validation": {
+        "status": "none"
+      },
+      "performance": {
+        "status": "none",
+        "complexity": "O(n log n)."
+      }
+    },
+    {
+      "id": "inverse_normal_cdf",
+      "summary": "The standard normal quantile: the z with P(Z <= z) = p, for p strictly between 0 and 1.",
+      "input": {
+        "schema": "schemas/wasm.schema.json#/$defs/inverse_normal_cdf.input",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "output": {
+        "schema": "schemas/wasm.schema.json#/$defs/inverse_normal_cdf.output",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "contract_test": "src/wasm.rs::engine_card_tests::every_export_is_a_card_operation_with_its_arguments",
+      "hints": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      },
+      "effects": {
+        "filesystem": "none",
+        "network": "none",
+        "clock": "none",
+        "randomness": "none"
+      },
+      "determinism": {
+        "kind": "deterministic",
+        "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_unseeded_randomness"
+      },
+      "validation": {
+        "status": "none"
+      },
+      "performance": {
+        "status": "none",
+        "complexity": "O(1)."
+      }
+    },
+    {
+      "id": "t_distribution_cdf",
+      "summary": "Student's t CDF P(T <= t) for df > 0 degrees of freedom (fractional df allowed).",
+      "input": {
+        "schema": "schemas/wasm.schema.json#/$defs/t_distribution_cdf.input",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "output": {
+        "schema": "schemas/wasm.schema.json#/$defs/t_distribution_cdf.output",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "contract_test": "src/wasm.rs::engine_card_tests::every_export_is_a_card_operation_with_its_arguments",
+      "hints": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      },
+      "effects": {
+        "filesystem": "none",
+        "network": "none",
+        "clock": "none",
+        "randomness": "none"
+      },
+      "determinism": {
+        "kind": "deterministic",
+        "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_unseeded_randomness"
+      },
+      "validation": {
+        "status": "none"
+      },
+      "performance": {
+        "status": "none",
+        "complexity": "O(1): a special-function evaluation."
+      }
+    },
+    {
+      "id": "t_distribution_quantile",
+      "summary": "Student's t quantile: the t with P(T <= t) = p, for p strictly between 0 and 1 and df > 0.",
+      "input": {
+        "schema": "schemas/wasm.schema.json#/$defs/t_distribution_quantile.input",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "output": {
+        "schema": "schemas/wasm.schema.json#/$defs/t_distribution_quantile.output",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "contract_test": "src/wasm.rs::engine_card_tests::every_export_is_a_card_operation_with_its_arguments",
+      "hints": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      },
+      "effects": {
+        "filesystem": "none",
+        "network": "none",
+        "clock": "none",
+        "randomness": "none"
+      },
+      "determinism": {
+        "kind": "deterministic",
+        "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_unseeded_randomness"
+      },
+      "validation": {
+        "status": "none"
+      },
+      "performance": {
+        "status": "none",
+        "complexity": "O(1) in the input size: a numerical inversion of the CDF."
+      }
+    },
+    {
+      "id": "f_distribution_cdf",
+      "summary": "The F distribution CDF P(X <= x) for df1, df2 > 0 (0 for x <= 0).",
+      "input": {
+        "schema": "schemas/wasm.schema.json#/$defs/f_distribution_cdf.input",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "output": {
+        "schema": "schemas/wasm.schema.json#/$defs/f_distribution_cdf.output",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "contract_test": "src/wasm.rs::engine_card_tests::every_export_is_a_card_operation_with_its_arguments",
+      "hints": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      },
+      "effects": {
+        "filesystem": "none",
+        "network": "none",
+        "clock": "none",
+        "randomness": "none"
+      },
+      "determinism": {
+        "kind": "deterministic",
+        "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_unseeded_randomness"
+      },
+      "validation": {
+        "status": "none"
+      },
+      "performance": {
+        "status": "none",
+        "complexity": "O(1): a special-function evaluation."
+      }
+    },
+    {
+      "id": "f_distribution_quantile",
+      "summary": "The F quantile: the x with P(X <= x) = p, for p strictly between 0 and 1 and df1, df2 > 0.",
+      "input": {
+        "schema": "schemas/wasm.schema.json#/$defs/f_distribution_quantile.input",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "output": {
+        "schema": "schemas/wasm.schema.json#/$defs/f_distribution_quantile.output",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "contract_test": "src/wasm.rs::engine_card_tests::every_export_is_a_card_operation_with_its_arguments",
+      "hints": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      },
+      "effects": {
+        "filesystem": "none",
+        "network": "none",
+        "clock": "none",
+        "randomness": "none"
+      },
+      "determinism": {
+        "kind": "deterministic",
+        "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_unseeded_randomness"
+      },
+      "validation": {
+        "status": "none"
+      },
+      "performance": {
+        "status": "none",
+        "complexity": "O(1) in the input size: a numerical inversion of the CDF."
+      }
+    },
+    {
+      "id": "chi_squared_cdf",
+      "summary": "The chi-squared CDF P(X <= x) for k > 0 degrees of freedom (0 for x <= 0).",
+      "input": {
+        "schema": "schemas/wasm.schema.json#/$defs/chi_squared_cdf.input",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "output": {
+        "schema": "schemas/wasm.schema.json#/$defs/chi_squared_cdf.output",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "contract_test": "src/wasm.rs::engine_card_tests::every_export_is_a_card_operation_with_its_arguments",
+      "hints": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      },
+      "effects": {
+        "filesystem": "none",
+        "network": "none",
+        "clock": "none",
+        "randomness": "none"
+      },
+      "determinism": {
+        "kind": "deterministic",
+        "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_unseeded_randomness"
+      },
+      "validation": {
+        "status": "none"
+      },
+      "performance": {
+        "status": "none",
+        "complexity": "O(1): a special-function evaluation."
+      }
+    },
+    {
+      "id": "chi_squared_quantile",
+      "summary": "The chi-squared quantile: the x with P(X <= x) = p, for p strictly between 0 and 1 and k > 0.",
+      "input": {
+        "schema": "schemas/wasm.schema.json#/$defs/chi_squared_quantile.input",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "output": {
+        "schema": "schemas/wasm.schema.json#/$defs/chi_squared_quantile.output",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "contract_test": "src/wasm.rs::engine_card_tests::every_export_is_a_card_operation_with_its_arguments",
+      "hints": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      },
+      "effects": {
+        "filesystem": "none",
+        "network": "none",
+        "clock": "none",
+        "randomness": "none"
+      },
+      "determinism": {
+        "kind": "deterministic",
+        "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_unseeded_randomness"
+      },
+      "validation": {
+        "status": "none"
+      },
+      "performance": {
+        "status": "none",
+        "complexity": "O(1) in the input size: a numerical inversion of the CDF."
+      }
+    },
+    {
+      "id": "distribution_moments",
+      "summary": "The mean and variance of a parametric distribution; also the way to check a specification before using it. The distribution is {kind, ...parameters}: uniform, triangular, pert, normal, lognormal, weibull, exponential, gamma, beta or chi_squared.",
+      "input": {
+        "schema": "schemas/wasm.schema.json#/$defs/distribution_moments.input",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "output": {
+        "schema": "schemas/wasm.schema.json#/$defs/distribution_moments.output",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "contract_test": "src/wasm.rs::engine_card_tests::every_export_is_a_card_operation_with_its_arguments",
+      "hints": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      },
+      "effects": {
+        "filesystem": "none",
+        "network": "none",
+        "clock": "none",
+        "randomness": "none"
+      },
+      "determinism": {
+        "kind": "deterministic",
+        "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_unseeded_randomness"
+      },
+      "validation": {
+        "status": "none"
+      },
+      "performance": {
+        "status": "none",
+        "complexity": "O(1)."
+      }
+    },
+    {
+      "id": "distribution_cdf",
+      "summary": "P(X <= x) for a parametric distribution. The distribution is {kind, ...parameters}: uniform, triangular, pert, normal, lognormal, weibull, exponential, gamma, beta or chi_squared.",
+      "input": {
+        "schema": "schemas/wasm.schema.json#/$defs/distribution_cdf.input",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "output": {
+        "schema": "schemas/wasm.schema.json#/$defs/distribution_cdf.output",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "contract_test": "src/wasm.rs::engine_card_tests::every_export_is_a_card_operation_with_its_arguments",
+      "hints": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      },
+      "effects": {
+        "filesystem": "none",
+        "network": "none",
+        "clock": "none",
+        "randomness": "none"
+      },
+      "determinism": {
+        "kind": "deterministic",
+        "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_unseeded_randomness"
+      },
+      "validation": {
+        "status": "none"
+      },
+      "performance": {
+        "status": "none",
+        "complexity": "O(1): a special-function evaluation."
+      }
+    },
+    {
+      "id": "distribution_quantile",
+      "summary": "The x with P(X <= x) = p for a parametric distribution, p strictly between 0 and 1. The distribution is {kind, ...parameters}: uniform, triangular, pert, normal, lognormal, weibull, exponential, gamma, beta or chi_squared.",
+      "input": {
+        "schema": "schemas/wasm.schema.json#/$defs/distribution_quantile.input",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "output": {
+        "schema": "schemas/wasm.schema.json#/$defs/distribution_quantile.output",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "contract_test": "src/wasm.rs::engine_card_tests::every_export_is_a_card_operation_with_its_arguments",
+      "hints": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      },
+      "effects": {
+        "filesystem": "none",
+        "network": "none",
+        "clock": "none",
+        "randomness": "none"
+      },
+      "determinism": {
+        "kind": "deterministic",
+        "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_unseeded_randomness"
+      },
+      "validation": {
+        "status": "none"
+      },
+      "performance": {
+        "status": "none",
+        "complexity": "O(1) in the input size: a closed form where one exists, otherwise a numerical inversion of the CDF."
+      }
+    },
+    {
+      "id": "distribution_sample",
+      "summary": "n variates of a parametric distribution, reproducible from the seed: the same (distribution, n, seed) always gives the same values. The distribution is {kind, ...parameters}: uniform, triangular, pert, normal, lognormal, weibull, exponential, gamma, beta or chi_squared.",
+      "input": {
+        "schema": "schemas/wasm.schema.json#/$defs/distribution_sample.input",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "output": {
+        "schema": "schemas/wasm.schema.json#/$defs/distribution_sample.output",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "contract_test": "src/wasm.rs::engine_card_tests::every_export_is_a_card_operation_with_its_arguments",
+      "hints": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      },
+      "effects": {
+        "filesystem": "none",
+        "network": "none",
+        "clock": "none",
+        "randomness": "seeded"
+      },
+      "determinism": {
+        "kind": "seeded",
+        "test": "src/distributions/sampling.rs::tests::same_seed_same_draws_different_seed_different_draws",
+        "note": "The seed is a required argument; there is no unseeded call."
+      },
+      "validation": {
+        "status": "none"
+      },
+      "performance": {
+        "status": "none",
+        "complexity": "O(n) draws; each O(1) or a short rejection loop (gamma, beta)."
+      }
+    },
+    {
+      "id": "interval_normalize",
+      "summary": "A list of half-open [start, end] intervals in normal form: sorted, disjoint, touching pieces merged, empty ones dropped; a reversed interval is refused, not swapped.",
+      "input": {
+        "schema": "schemas/wasm.schema.json#/$defs/interval_normalize.input",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "output": {
+        "schema": "schemas/wasm.schema.json#/$defs/interval_normalize.output",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "contract_test": "src/wasm.rs::engine_card_tests::every_export_is_a_card_operation_with_its_arguments",
+      "hints": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      },
+      "effects": {
+        "filesystem": "none",
+        "network": "none",
+        "clock": "none",
+        "randomness": "none"
+      },
+      "determinism": {
+        "kind": "deterministic",
+        "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_unseeded_randomness"
+      },
+      "validation": {
+        "status": "none"
+      },
+      "performance": {
+        "status": "none",
+        "complexity": "O(n log n)."
+      }
+    },
+    {
+      "id": "interval_measure",
+      "summary": "The total length of the union of half-open intervals; a point covered by several counts once.",
+      "input": {
+        "schema": "schemas/wasm.schema.json#/$defs/interval_measure.input",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "output": {
+        "schema": "schemas/wasm.schema.json#/$defs/interval_measure.output",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "contract_test": "src/wasm.rs::engine_card_tests::every_export_is_a_card_operation_with_its_arguments",
+      "hints": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      },
+      "effects": {
+        "filesystem": "none",
+        "network": "none",
+        "clock": "none",
+        "randomness": "none"
+      },
+      "determinism": {
+        "kind": "deterministic",
+        "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_unseeded_randomness"
+      },
+      "validation": {
+        "status": "none"
+      },
+      "performance": {
+        "status": "none",
+        "complexity": "O(n log n)."
+      }
+    },
+    {
+      "id": "interval_union",
+      "summary": "The points in a or b, as intervals in normal form.",
+      "input": {
+        "schema": "schemas/wasm.schema.json#/$defs/interval_union.input",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "output": {
+        "schema": "schemas/wasm.schema.json#/$defs/interval_union.output",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "contract_test": "src/wasm.rs::engine_card_tests::every_export_is_a_card_operation_with_its_arguments",
+      "hints": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      },
+      "effects": {
+        "filesystem": "none",
+        "network": "none",
+        "clock": "none",
+        "randomness": "none"
+      },
+      "determinism": {
+        "kind": "deterministic",
+        "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_unseeded_randomness"
+      },
+      "validation": {
+        "status": "none"
+      },
+      "performance": {
+        "status": "none",
+        "complexity": "O((n + m) log(n + m))."
+      }
+    },
+    {
+      "id": "interval_intersection",
+      "summary": "The points in both a and b, as intervals in normal form; clipping to a window is the intersection with [[from, to]].",
+      "input": {
+        "schema": "schemas/wasm.schema.json#/$defs/interval_intersection.input",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "output": {
+        "schema": "schemas/wasm.schema.json#/$defs/interval_intersection.output",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "contract_test": "src/wasm.rs::engine_card_tests::every_export_is_a_card_operation_with_its_arguments",
+      "hints": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      },
+      "effects": {
+        "filesystem": "none",
+        "network": "none",
+        "clock": "none",
+        "randomness": "none"
+      },
+      "determinism": {
+        "kind": "deterministic",
+        "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_unseeded_randomness"
+      },
+      "validation": {
+        "status": "none"
+      },
+      "performance": {
+        "status": "none",
+        "complexity": "O((n + m) log(n + m))."
+      }
+    },
+    {
+      "id": "interval_difference",
+      "summary": "The points in a but not in b, as intervals in normal form.",
+      "input": {
+        "schema": "schemas/wasm.schema.json#/$defs/interval_difference.input",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "output": {
+        "schema": "schemas/wasm.schema.json#/$defs/interval_difference.output",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "contract_test": "src/wasm.rs::engine_card_tests::every_export_is_a_card_operation_with_its_arguments",
+      "hints": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      },
+      "effects": {
+        "filesystem": "none",
+        "network": "none",
+        "clock": "none",
+        "randomness": "none"
+      },
+      "determinism": {
+        "kind": "deterministic",
+        "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_unseeded_randomness"
+      },
+      "validation": {
+        "status": "none"
+      },
+      "performance": {
+        "status": "none",
+        "complexity": "O((n + m) log(n + m))."
+      }
+    },
+    {
+      "id": "unit_convert",
+      "summary": "A reading in one unit expressed in another (20 Cel is 293.15 K): UCUM-style expressions over the SI units and the caller's own definitions; units of different dimensions are refused.",
+      "input": {
+        "schema": "schemas/wasm.schema.json#/$defs/unit_convert.input",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "output": {
+        "schema": "schemas/wasm.schema.json#/$defs/unit_convert.output",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "contract_test": "src/wasm.rs::engine_card_tests::every_export_is_a_card_operation_with_its_arguments",
+      "hints": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      },
+      "effects": {
+        "filesystem": "none",
+        "network": "none",
+        "clock": "none",
+        "randomness": "none"
+      },
+      "determinism": {
+        "kind": "deterministic",
+        "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_unseeded_randomness"
+      },
+      "validation": {
+        "status": "none"
+      },
+      "performance": {
+        "status": "none",
+        "complexity": "Linear in the length of the two expressions and the definitions."
+      }
+    },
+    {
+      "id": "unit_convert_difference",
+      "summary": "An amount of change in one unit expressed in another: the offset of a scale cancels, so a rise of 20 Cel is a rise of 20 K.",
+      "input": {
+        "schema": "schemas/wasm.schema.json#/$defs/unit_convert_difference.input",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "output": {
+        "schema": "schemas/wasm.schema.json#/$defs/unit_convert_difference.output",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "contract_test": "src/wasm.rs::engine_card_tests::every_export_is_a_card_operation_with_its_arguments",
+      "hints": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      },
+      "effects": {
+        "filesystem": "none",
+        "network": "none",
+        "clock": "none",
+        "randomness": "none"
+      },
+      "determinism": {
+        "kind": "deterministic",
+        "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_unseeded_randomness"
+      },
+      "validation": {
+        "status": "none"
+      },
+      "performance": {
+        "status": "none",
+        "complexity": "Linear in the length of the two expressions and the definitions."
+      }
+    },
+    {
+      "id": "unit_info",
+      "summary": "What a unit expression stands for: its dimension in SI base units (with the seven exponents), and the scale and offset that take a value to SI.",
+      "input": {
+        "schema": "schemas/wasm.schema.json#/$defs/unit_info.input",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "output": {
+        "schema": "schemas/wasm.schema.json#/$defs/unit_info.output",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "contract_test": "src/wasm.rs::engine_card_tests::every_export_is_a_card_operation_with_its_arguments",
+      "hints": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      },
+      "effects": {
+        "filesystem": "none",
+        "network": "none",
+        "clock": "none",
+        "randomness": "none"
+      },
+      "determinism": {
+        "kind": "deterministic",
+        "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_unseeded_randomness"
+      },
+      "validation": {
+        "status": "none"
+      },
+      "performance": {
+        "status": "none",
+        "complexity": "Linear in the length of the expression and the definitions."
+      }
+    }
+  ]
+}

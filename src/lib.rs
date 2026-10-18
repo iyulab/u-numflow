@@ -38,6 +38,9 @@ pub mod units;
 pub mod ffi;
 #[cfg(feature = "wasm")]
 pub mod wasm;
+
+#[cfg(all(test, feature = "wasm"))]
+mod engine_card;
 #[cfg(any(feature = "wasm", feature = "ffi"))]
 mod wire;
 

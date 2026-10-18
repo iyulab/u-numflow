@@ -1,0 +1,1222 @@
+{
+  "$defs": {
+    "DistributionSpec": {
+      "description": "A distribution named by `kind`, with its parameters.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Continuous uniform on `[min, max]`.",
+          "properties": {
+            "kind": {
+              "const": "uniform",
+              "type": "string"
+            },
+            "max": {
+              "format": "double",
+              "type": "number"
+            },
+            "min": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "kind",
+            "min",
+            "max"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Triangular on `[min, max]` peaking at `mode`.",
+          "properties": {
+            "kind": {
+              "const": "triangular",
+              "type": "string"
+            },
+            "max": {
+              "format": "double",
+              "type": "number"
+            },
+            "min": {
+              "format": "double",
+              "type": "number"
+            },
+            "mode": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "kind",
+            "min",
+            "mode",
+            "max"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "PERT (scaled Beta) on `[min, max]`; `lambda` weights the mode (default 4).",
+          "properties": {
+            "kind": {
+              "const": "pert",
+              "type": "string"
+            },
+            "lambda": {
+              "default": null,
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "max": {
+              "format": "double",
+              "type": "number"
+            },
+            "min": {
+              "format": "double",
+              "type": "number"
+            },
+            "mode": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "kind",
+            "min",
+            "mode",
+            "max"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Normal with mean `mu` and standard deviation `sigma`.",
+          "properties": {
+            "kind": {
+              "const": "normal",
+              "type": "string"
+            },
+            "mu": {
+              "format": "double",
+              "type": "number"
+            },
+            "sigma": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "kind",
+            "mu",
+            "sigma"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Log-normal: `ln X ~ Normal(mu, sigma)`.",
+          "properties": {
+            "kind": {
+              "const": "lognormal",
+              "type": "string"
+            },
+            "mu": {
+              "format": "double",
+              "type": "number"
+            },
+            "sigma": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "kind",
+            "mu",
+            "sigma"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Weibull with `shape` (β) and `scale` (η).",
+          "properties": {
+            "kind": {
+              "const": "weibull",
+              "type": "string"
+            },
+            "scale": {
+              "format": "double",
+              "type": "number"
+            },
+            "shape": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "kind",
+            "shape",
+            "scale"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Exponential with `rate` (λ).",
+          "properties": {
+            "kind": {
+              "const": "exponential",
+              "type": "string"
+            },
+            "rate": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "kind",
+            "rate"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Gamma with `shape` (α) and `rate` (β).",
+          "properties": {
+            "kind": {
+              "const": "gamma",
+              "type": "string"
+            },
+            "rate": {
+              "format": "double",
+              "type": "number"
+            },
+            "shape": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "kind",
+            "shape",
+            "rate"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Beta on `[0, 1]` with shapes `alpha` and `beta`.",
+          "properties": {
+            "alpha": {
+              "format": "double",
+              "type": "number"
+            },
+            "beta": {
+              "format": "double",
+              "type": "number"
+            },
+            "kind": {
+              "const": "beta",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "alpha",
+            "beta"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Chi-squared with `k` degrees of freedom.",
+          "properties": {
+            "k": {
+              "format": "double",
+              "type": "number"
+            },
+            "kind": {
+              "const": "chi_squared",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "k"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "LambdaEstimateDto": {
+      "description": "Output of [`estimate_lambda`]: `{ lambda, at_bound }`.",
+      "properties": {
+        "at_bound": {
+          "type": "boolean"
+        },
+        "lambda": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "lambda",
+        "at_bound"
+      ],
+      "type": "object"
+    },
+    "MomentsDto": {
+      "description": "Mean and variance of a distribution.",
+      "properties": {
+        "mean": {
+          "format": "double",
+          "type": "number"
+        },
+        "variance": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "mean",
+        "variance"
+      ],
+      "type": "object"
+    },
+    "UnitDefinitionSpec": {
+      "additionalProperties": false,
+      "description": "A unit the caller defines: `symbol` = `factor` × `unit` (+ `offset` SI\nunits at its zero, for a scale such as a Fahrenheit degree).",
+      "properties": {
+        "factor": {
+          "default": 1.0,
+          "description": "How many `unit` one `symbol` is (default 1, `> 0`).",
+          "format": "double",
+          "type": "number"
+        },
+        "offset": {
+          "default": 0.0,
+          "description": "SI value at the symbol's zero (default 0).",
+          "format": "double",
+          "type": "number"
+        },
+        "symbol": {
+          "description": "The new symbol, e.g. `cal_IT`.",
+          "type": "string"
+        },
+        "unit": {
+          "description": "What it is a multiple of, as a unit expression, e.g. `J`.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "symbol",
+        "unit"
+      ],
+      "type": "object"
+    },
+    "UnitInfo": {
+      "description": "What a unit expression stands for.",
+      "properties": {
+        "dimension": {
+          "description": "The dimension in SI base units, e.g. `kg.m2.s-2` (`1` for a pure number).",
+          "type": "string"
+        },
+        "exponents": {
+          "description": "Exponents of m, kg, s, A, K, mol, cd.",
+          "items": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "maxItems": 7,
+          "minItems": 7,
+          "type": "array"
+        },
+        "offset": {
+          "description": "SI value of the unit's zero (0 except for scales such as `Cel`).",
+          "format": "double",
+          "type": "number"
+        },
+        "scale": {
+          "description": "Size of one unit in coherent SI units.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "dimension",
+        "exponents",
+        "scale",
+        "offset"
+      ],
+      "type": "object"
+    },
+    "box_cox.input": {
+      "additionalProperties": false,
+      "description": "The arguments of box_cox(data, lambda), by name; the WebAssembly function takes them in that order.",
+      "properties": {
+        "data": {
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "lambda": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "data",
+        "lambda"
+      ],
+      "type": "object"
+    },
+    "box_cox.output": {
+      "items": {
+        "format": "double",
+        "type": "number"
+      },
+      "type": "array"
+    },
+    "chi_squared_cdf.input": {
+      "additionalProperties": false,
+      "description": "The arguments of chi_squared_cdf(x, k), by name; the WebAssembly function takes them in that order.",
+      "properties": {
+        "k": {
+          "format": "double",
+          "type": "number"
+        },
+        "x": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "x",
+        "k"
+      ],
+      "type": "object"
+    },
+    "chi_squared_cdf.output": {
+      "format": "double",
+      "type": "number"
+    },
+    "chi_squared_quantile.input": {
+      "additionalProperties": false,
+      "description": "The arguments of chi_squared_quantile(p, k), by name; the WebAssembly function takes them in that order.",
+      "properties": {
+        "k": {
+          "format": "double",
+          "type": "number"
+        },
+        "p": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "p",
+        "k"
+      ],
+      "type": "object"
+    },
+    "chi_squared_quantile.output": {
+      "format": "double",
+      "type": "number"
+    },
+    "distribution_cdf.input": {
+      "additionalProperties": false,
+      "description": "The arguments of distribution_cdf(distribution, x), by name; the WebAssembly function takes them in that order.",
+      "properties": {
+        "distribution": {
+          "$ref": "#/$defs/DistributionSpec"
+        },
+        "x": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "distribution",
+        "x"
+      ],
+      "type": "object"
+    },
+    "distribution_cdf.output": {
+      "format": "double",
+      "type": "number"
+    },
+    "distribution_moments.input": {
+      "additionalProperties": false,
+      "description": "The arguments of distribution_moments(distribution), by name; the WebAssembly function takes them in that order.",
+      "properties": {
+        "distribution": {
+          "$ref": "#/$defs/DistributionSpec"
+        }
+      },
+      "required": [
+        "distribution"
+      ],
+      "type": "object"
+    },
+    "distribution_moments.output": {
+      "$ref": "#/$defs/MomentsDto"
+    },
+    "distribution_quantile.input": {
+      "additionalProperties": false,
+      "description": "The arguments of distribution_quantile(distribution, p), by name; the WebAssembly function takes them in that order.",
+      "properties": {
+        "distribution": {
+          "$ref": "#/$defs/DistributionSpec"
+        },
+        "p": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "distribution",
+        "p"
+      ],
+      "type": "object"
+    },
+    "distribution_quantile.output": {
+      "format": "double",
+      "type": "number"
+    },
+    "distribution_sample.input": {
+      "additionalProperties": false,
+      "description": "The arguments of distribution_sample(distribution, n, seed), by name; the WebAssembly function takes them in that order.",
+      "properties": {
+        "distribution": {
+          "$ref": "#/$defs/DistributionSpec"
+        },
+        "n": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "seed": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "distribution",
+        "n",
+        "seed"
+      ],
+      "type": "object"
+    },
+    "distribution_sample.output": {
+      "items": {
+        "format": "double",
+        "type": "number"
+      },
+      "type": "array"
+    },
+    "estimate_lambda.input": {
+      "additionalProperties": false,
+      "description": "The arguments of estimate_lambda(data, lambda_min, lambda_max), by name; the WebAssembly function takes them in that order.",
+      "properties": {
+        "data": {
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "lambda_max": {
+          "format": "double",
+          "type": "number"
+        },
+        "lambda_min": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "data",
+        "lambda_min",
+        "lambda_max"
+      ],
+      "type": "object"
+    },
+    "estimate_lambda.output": {
+      "$ref": "#/$defs/LambdaEstimateDto"
+    },
+    "f_distribution_cdf.input": {
+      "additionalProperties": false,
+      "description": "The arguments of f_distribution_cdf(x, df1, df2), by name; the WebAssembly function takes them in that order.",
+      "properties": {
+        "df1": {
+          "format": "double",
+          "type": "number"
+        },
+        "df2": {
+          "format": "double",
+          "type": "number"
+        },
+        "x": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "x",
+        "df1",
+        "df2"
+      ],
+      "type": "object"
+    },
+    "f_distribution_cdf.output": {
+      "format": "double",
+      "type": "number"
+    },
+    "f_distribution_quantile.input": {
+      "additionalProperties": false,
+      "description": "The arguments of f_distribution_quantile(p, df1, df2), by name; the WebAssembly function takes them in that order.",
+      "properties": {
+        "df1": {
+          "format": "double",
+          "type": "number"
+        },
+        "df2": {
+          "format": "double",
+          "type": "number"
+        },
+        "p": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "p",
+        "df1",
+        "df2"
+      ],
+      "type": "object"
+    },
+    "f_distribution_quantile.output": {
+      "format": "double",
+      "type": "number"
+    },
+    "interval_difference.input": {
+      "additionalProperties": false,
+      "description": "The arguments of interval_difference(a, b), by name; the WebAssembly function takes them in that order.",
+      "properties": {
+        "a": {
+          "items": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "format": "double",
+                "type": "number"
+              },
+              {
+                "format": "double",
+                "type": "number"
+              }
+            ],
+            "type": "array"
+          },
+          "type": "array"
+        },
+        "b": {
+          "items": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "format": "double",
+                "type": "number"
+              },
+              {
+                "format": "double",
+                "type": "number"
+              }
+            ],
+            "type": "array"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "a",
+        "b"
+      ],
+      "type": "object"
+    },
+    "interval_difference.output": {
+      "items": {
+        "maxItems": 2,
+        "minItems": 2,
+        "prefixItems": [
+          {
+            "format": "double",
+            "type": "number"
+          },
+          {
+            "format": "double",
+            "type": "number"
+          }
+        ],
+        "type": "array"
+      },
+      "type": "array"
+    },
+    "interval_intersection.input": {
+      "additionalProperties": false,
+      "description": "The arguments of interval_intersection(a, b), by name; the WebAssembly function takes them in that order.",
+      "properties": {
+        "a": {
+          "items": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "format": "double",
+                "type": "number"
+              },
+              {
+                "format": "double",
+                "type": "number"
+              }
+            ],
+            "type": "array"
+          },
+          "type": "array"
+        },
+        "b": {
+          "items": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "format": "double",
+                "type": "number"
+              },
+              {
+                "format": "double",
+                "type": "number"
+              }
+            ],
+            "type": "array"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "a",
+        "b"
+      ],
+      "type": "object"
+    },
+    "interval_intersection.output": {
+      "items": {
+        "maxItems": 2,
+        "minItems": 2,
+        "prefixItems": [
+          {
+            "format": "double",
+            "type": "number"
+          },
+          {
+            "format": "double",
+            "type": "number"
+          }
+        ],
+        "type": "array"
+      },
+      "type": "array"
+    },
+    "interval_measure.input": {
+      "additionalProperties": false,
+      "description": "The arguments of interval_measure(intervals), by name; the WebAssembly function takes them in that order.",
+      "properties": {
+        "intervals": {
+          "items": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "format": "double",
+                "type": "number"
+              },
+              {
+                "format": "double",
+                "type": "number"
+              }
+            ],
+            "type": "array"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "intervals"
+      ],
+      "type": "object"
+    },
+    "interval_measure.output": {
+      "format": "double",
+      "type": "number"
+    },
+    "interval_normalize.input": {
+      "additionalProperties": false,
+      "description": "The arguments of interval_normalize(intervals), by name; the WebAssembly function takes them in that order.",
+      "properties": {
+        "intervals": {
+          "items": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "format": "double",
+                "type": "number"
+              },
+              {
+                "format": "double",
+                "type": "number"
+              }
+            ],
+            "type": "array"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "intervals"
+      ],
+      "type": "object"
+    },
+    "interval_normalize.output": {
+      "items": {
+        "maxItems": 2,
+        "minItems": 2,
+        "prefixItems": [
+          {
+            "format": "double",
+            "type": "number"
+          },
+          {
+            "format": "double",
+            "type": "number"
+          }
+        ],
+        "type": "array"
+      },
+      "type": "array"
+    },
+    "interval_union.input": {
+      "additionalProperties": false,
+      "description": "The arguments of interval_union(a, b), by name; the WebAssembly function takes them in that order.",
+      "properties": {
+        "a": {
+          "items": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "format": "double",
+                "type": "number"
+              },
+              {
+                "format": "double",
+                "type": "number"
+              }
+            ],
+            "type": "array"
+          },
+          "type": "array"
+        },
+        "b": {
+          "items": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "format": "double",
+                "type": "number"
+              },
+              {
+                "format": "double",
+                "type": "number"
+              }
+            ],
+            "type": "array"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "a",
+        "b"
+      ],
+      "type": "object"
+    },
+    "interval_union.output": {
+      "items": {
+        "maxItems": 2,
+        "minItems": 2,
+        "prefixItems": [
+          {
+            "format": "double",
+            "type": "number"
+          },
+          {
+            "format": "double",
+            "type": "number"
+          }
+        ],
+        "type": "array"
+      },
+      "type": "array"
+    },
+    "inverse_normal_cdf.input": {
+      "additionalProperties": false,
+      "description": "The arguments of inverse_normal_cdf(p), by name; the WebAssembly function takes them in that order.",
+      "properties": {
+        "p": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "p"
+      ],
+      "type": "object"
+    },
+    "inverse_normal_cdf.output": {
+      "format": "double",
+      "type": "number"
+    },
+    "mean.input": {
+      "additionalProperties": false,
+      "description": "The arguments of mean(data), by name; the WebAssembly function takes them in that order.",
+      "properties": {
+        "data": {
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "data"
+      ],
+      "type": "object"
+    },
+    "mean.output": {
+      "format": "double",
+      "type": "number"
+    },
+    "median.input": {
+      "additionalProperties": false,
+      "description": "The arguments of median(data), by name; the WebAssembly function takes them in that order.",
+      "properties": {
+        "data": {
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "data"
+      ],
+      "type": "object"
+    },
+    "median.output": {
+      "format": "double",
+      "type": "number"
+    },
+    "normal_cdf.input": {
+      "additionalProperties": false,
+      "description": "The arguments of normal_cdf(x), by name; the WebAssembly function takes them in that order.",
+      "properties": {
+        "x": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "x"
+      ],
+      "type": "object"
+    },
+    "normal_cdf.output": {
+      "format": "double",
+      "type": "number"
+    },
+    "normal_sf.input": {
+      "additionalProperties": false,
+      "description": "The arguments of normal_sf(x), by name; the WebAssembly function takes them in that order.",
+      "properties": {
+        "x": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "x"
+      ],
+      "type": "object"
+    },
+    "normal_sf.output": {
+      "format": "double",
+      "type": "number"
+    },
+    "quantiles.input": {
+      "additionalProperties": false,
+      "description": "The arguments of quantiles(data, probabilities), by name; the WebAssembly function takes them in that order.",
+      "properties": {
+        "data": {
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "probabilities": {
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "data",
+        "probabilities"
+      ],
+      "type": "object"
+    },
+    "quantiles.output": {
+      "items": {
+        "format": "double",
+        "type": "number"
+      },
+      "type": "array"
+    },
+    "rfft.input": {
+      "additionalProperties": false,
+      "description": "The arguments of rfft(data), by name; the WebAssembly function takes them in that order.",
+      "properties": {
+        "data": {
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "data"
+      ],
+      "type": "object"
+    },
+    "rfft.output": {
+      "items": {
+        "format": "double",
+        "type": "number"
+      },
+      "type": "array"
+    },
+    "std_dev.input": {
+      "additionalProperties": false,
+      "description": "The arguments of std_dev(data), by name; the WebAssembly function takes them in that order.",
+      "properties": {
+        "data": {
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "data"
+      ],
+      "type": "object"
+    },
+    "std_dev.output": {
+      "format": "double",
+      "type": "number"
+    },
+    "t_distribution_cdf.input": {
+      "additionalProperties": false,
+      "description": "The arguments of t_distribution_cdf(t, df), by name; the WebAssembly function takes them in that order.",
+      "properties": {
+        "df": {
+          "format": "double",
+          "type": "number"
+        },
+        "t": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "t",
+        "df"
+      ],
+      "type": "object"
+    },
+    "t_distribution_cdf.output": {
+      "format": "double",
+      "type": "number"
+    },
+    "t_distribution_quantile.input": {
+      "additionalProperties": false,
+      "description": "The arguments of t_distribution_quantile(p, df), by name; the WebAssembly function takes them in that order.",
+      "properties": {
+        "df": {
+          "format": "double",
+          "type": "number"
+        },
+        "p": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "p",
+        "df"
+      ],
+      "type": "object"
+    },
+    "t_distribution_quantile.output": {
+      "format": "double",
+      "type": "number"
+    },
+    "unit_convert.input": {
+      "additionalProperties": false,
+      "description": "The arguments of unit_convert(value, from, to, definitions), by name; the WebAssembly function takes them in that order.",
+      "properties": {
+        "definitions": {
+          "items": {
+            "$ref": "#/$defs/UnitDefinitionSpec"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "from": {
+          "type": "string"
+        },
+        "to": {
+          "type": "string"
+        },
+        "value": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "value",
+        "from",
+        "to"
+      ],
+      "type": "object"
+    },
+    "unit_convert.output": {
+      "format": "double",
+      "type": "number"
+    },
+    "unit_convert_difference.input": {
+      "additionalProperties": false,
+      "description": "The arguments of unit_convert_difference(value, from, to, definitions), by name; the WebAssembly function takes them in that order.",
+      "properties": {
+        "definitions": {
+          "items": {
+            "$ref": "#/$defs/UnitDefinitionSpec"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "from": {
+          "type": "string"
+        },
+        "to": {
+          "type": "string"
+        },
+        "value": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "value",
+        "from",
+        "to"
+      ],
+      "type": "object"
+    },
+    "unit_convert_difference.output": {
+      "format": "double",
+      "type": "number"
+    },
+    "unit_info.input": {
+      "additionalProperties": false,
+      "description": "The arguments of unit_info(unit, definitions), by name; the WebAssembly function takes them in that order.",
+      "properties": {
+        "definitions": {
+          "items": {
+            "$ref": "#/$defs/UnitDefinitionSpec"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "unit": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "unit"
+      ],
+      "type": "object"
+    },
+    "unit_info.output": {
+      "$ref": "#/$defs/UnitInfo"
+    },
+    "variance.input": {
+      "additionalProperties": false,
+      "description": "The arguments of variance(data), by name; the WebAssembly function takes them in that order.",
+      "properties": {
+        "data": {
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "data"
+      ],
+      "type": "object"
+    },
+    "variance.output": {
+      "format": "double",
+      "type": "number"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "u-numflow WebAssembly operations"
+}
