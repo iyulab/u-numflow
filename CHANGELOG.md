@@ -8,6 +8,15 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ## [Unreleased]
 
+### Added
+
+- Sample median and quantiles reach every binding: WebAssembly `median(data)`
+  and `quantiles(data, probabilities)` (R-7, in the order asked, one sort),
+  the C ABI `unumflow_median` / `unumflow_quantiles`, and .NET
+  `Stats.Median`, `Stats.Quantile` and `Stats.Quantiles`. No values is
+  `empty_input`; a probability outside `[0, 1]` is `parameter_out_of_range`
+  at `probabilities[i]` with `min` 0 and `max` 1.
+
 ## [0.14.0] - 2026-10-16
 
 The .NET client is `UNumflow` 0.7.0.

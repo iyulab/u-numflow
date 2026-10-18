@@ -319,6 +319,17 @@
         "b": {}
       }
     },
+    "unumflow_median": {
+      "properties": {
+        "data": {}
+      }
+    },
+    "unumflow_quantiles": {
+      "properties": {
+        "data": {},
+        "probabilities": {}
+      }
+    },
     "unumflow_unit_convert": {
       "properties": {
         "definitions": {

@@ -26,6 +26,8 @@
 //! | `unumflow_distribution_cdf` | `{distribution, x}` | `{"value"}` |
 //! | `unumflow_distribution_quantile` | `{distribution, p}` | `{"value"}` |
 //! | `unumflow_distribution_sample` | `{distribution, n, seed}` | `{"values": [...]}` |
+//! | `unumflow_median` | `{data}` | `{"value"}` |
+//! | `unumflow_quantiles` | `{data, probabilities}` | `{"values": [...]}` (R-7) |
 //! | `unumflow_interval_normalize` | `{intervals}` | `{"intervals": [[s, e], ...]}` |
 //! | `unumflow_interval_measure` | `{intervals}` | `{"value"}` |
 //! | `unumflow_interval_contains` | `{intervals, t}` | `{"value": bool}` |
@@ -48,8 +50,8 @@ use serde_json::{json, Value};
 use crate::collections::IntervalSet;
 use crate::wire::{
     check_finite, check_kind, check_probability, convert_units, distribution_refusal,
-    interval_set_from, unit_at, units_from, whole, Code, Distribution, DistributionSpec, Field,
-    Refusal, UnitDefinitionSpec, UnitInfo,
+    interval_set_from, sample_median, sample_quantiles, unit_at, units_from, whole, Code,
+    Distribution, DistributionSpec, Field, Refusal, UnitDefinitionSpec, UnitInfo,
 };
 
 const ERR_NULL: i32 = -1;
@@ -243,6 +245,21 @@ struct Convert {
     definitions: Vec<UnitDefinitionSpec>,
 }
 
+/// `{data}`.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Sample {
+    data: Vec<f64>,
+}
+
+/// `{data, probabilities}`.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SampleAt {
+    data: Vec<f64>,
+    probabilities: Vec<f64>,
+}
+
 /// `{unit, definitions?}`.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -323,6 +340,26 @@ export!(
         let n = whole("n", r.n, u32::MAX as f64).map_err(refused)? as usize;
         let seed = whole("seed", r.seed, 9_007_199_254_740_992.0).map_err(refused)? as u64;
         Ok(json!({ "values": d.sample_n(n, seed) }))
+    }
+);
+
+export!(
+    /// The median of the sample `data` (even length: the mean of the middle
+    /// two).
+    unumflow_median,
+    |text| {
+        let r: Sample = parse(text)?;
+        Ok(json!({ "value": sample_median(r.data).map_err(refused)? }))
+    }
+);
+
+export!(
+    /// The sample quantiles of `data` at each of `probabilities` (R-7, the
+    /// default of R, NumPy and Excel), in the order asked.
+    unumflow_quantiles,
+    |text| {
+        let r: SampleAt = parse(text)?;
+        Ok(json!({ "values": sample_quantiles(r.data, &r.probabilities).map_err(refused)? }))
     }
 );
 
@@ -498,6 +535,64 @@ mod tests {
         assert_eq!(s, 0);
         assert_eq!(a["values"].as_array().unwrap().len(), 4);
         assert_eq!(a, b, "same seed, same values");
+    }
+
+    #[test]
+    fn sample_statistics() {
+        let (s, b) = call(unumflow_median, r#"{"data": [4, 1, 3, 2]}"#);
+        assert_eq!((s, b["value"].as_f64()), (0, Some(2.5)), "{b}");
+        let (s, b) = call(unumflow_median, r#"{"data": [5, 1, 9]}"#);
+        assert_eq!((s, b["value"].as_f64()), (0, Some(5.0)), "{b}");
+
+        // R-7 on 1..=10: h = 9p. NumPy np.quantile([1..10], [0, .1, .25, .5, .9, 1])
+        // = [1, 1.9, 3.25, 5.5, 9.1, 10].
+        let (s, b) = call(
+            unumflow_quantiles,
+            r#"{"data": [10, 1, 9, 2, 8, 3, 7, 4, 6, 5], "probabilities": [0, 0.1, 0.25, 0.5, 0.9, 1]}"#,
+        );
+        assert_eq!(s, 0, "{b}");
+        let got: Vec<f64> = b["values"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_f64().unwrap())
+            .collect();
+        for (g, want) in got.iter().zip([1.0, 1.9, 3.25, 5.5, 9.1, 10.0]) {
+            assert!((g - want).abs() < 1e-12, "{got:?}");
+        }
+        let (s, b) = call(unumflow_quantiles, r#"{"data": [1], "probabilities": []}"#);
+        assert_eq!((s, &b["values"]), (0, &json!([])));
+    }
+
+    #[test]
+    fn sample_statistics_refusals() {
+        let (s, b) = call(unumflow_median, r#"{"data": []}"#);
+        assert_eq!(s, ERR_REFUSED);
+        assert_eq!(
+            (&b["code"], &b["parameter"]),
+            (&json!("empty_input"), &json!("data"))
+        );
+
+        let (s, b) = call(
+            unumflow_quantiles,
+            r#"{"data": [1, 2], "probabilities": [0.5, 1.5]}"#,
+        );
+        assert_eq!(s, ERR_REFUSED);
+        assert_eq!(b["code"], json!("parameter_out_of_range"));
+        assert_eq!(b["parameter"], json!("probabilities[1]"));
+        assert_eq!(
+            (&b["min"], &b["max"], &b["got"]),
+            (&json!(0.0), &json!(1.0), &json!(1.5))
+        );
+
+        let (s, b) = call(
+            unumflow_quantiles,
+            r#"{"data": [], "probabilities": [0.5]}"#,
+        );
+        assert_eq!((s, &b["code"]), (ERR_REFUSED, &json!("empty_input")));
+
+        let (s, b) = call(unumflow_median, r#"{"data": [1, null]}"#);
+        assert_eq!((s, &b["code"]), (ERR_PARSE, &json!("malformed_input")));
     }
 
     #[test]

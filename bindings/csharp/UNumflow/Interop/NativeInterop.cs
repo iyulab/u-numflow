@@ -20,6 +20,12 @@ internal static partial class NativeInterop
     public static partial int unumflow_distribution_sample(string requestJson, out IntPtr resultPtr);
 
     [LibraryImport(DllName, StringMarshalling = StringMarshalling.Utf8)]
+    public static partial int unumflow_median(string requestJson, out IntPtr resultPtr);
+
+    [LibraryImport(DllName, StringMarshalling = StringMarshalling.Utf8)]
+    public static partial int unumflow_quantiles(string requestJson, out IntPtr resultPtr);
+
+    [LibraryImport(DllName, StringMarshalling = StringMarshalling.Utf8)]
     public static partial int unumflow_interval_normalize(string requestJson, out IntPtr resultPtr);
 
     [LibraryImport(DllName, StringMarshalling = StringMarshalling.Utf8)]

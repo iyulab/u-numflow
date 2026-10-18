@@ -291,6 +291,74 @@ pub(crate) fn check_finite(name: &'static str, x: f64) -> Result<(), Refusal> {
     }
 }
 
+// ── Sample statistics ─────────────────────────────────────────────────────
+
+/// `data` sorted, refusing an empty sample (`empty_input`) and a value that is
+/// not finite (`value_not_finite` with its `index`) at `parameter`.
+fn sorted_sample(parameter: &'static str, mut data: Vec<f64>) -> Result<Vec<f64>, Refusal> {
+    if data.is_empty() {
+        return Err(Refusal {
+            code: Code::EmptyInput,
+            message: format!("{parameter}: a sample needs at least one value"),
+            fields: vec![("parameter", Field::Str(parameter))],
+        });
+    }
+    if let Some(i) = data.iter().position(|x| !x.is_finite()) {
+        return Err(Refusal {
+            code: Code::ValueNotFinite,
+            message: format!(
+                "{parameter}[{i}]: expected a finite number, got {}",
+                data[i]
+            ),
+            fields: vec![
+                ("parameter", Field::Str(parameter)),
+                ("index", Field::Num(i as f64)),
+            ],
+        });
+    }
+    data.sort_unstable_by(f64::total_cmp);
+    Ok(data)
+}
+
+/// The median of `data` (even length: the mean of the middle two).
+pub(crate) fn sample_median(data: Vec<f64>) -> Result<f64, Refusal> {
+    let sorted = sorted_sample("data", data)?;
+    Ok(crate::stats::quantile_sorted(&sorted, 0.5).expect("a non-empty sample has a median"))
+}
+
+/// The R-7 quantiles of `data` at each of `probabilities` (each in `[0, 1]`),
+/// sorting the sample once. A probability that is not finite is
+/// `value_not_finite` at `probabilities` with its `index`; one outside
+/// `[0, 1]` is `parameter_out_of_range` at `probabilities[i]`.
+pub(crate) fn sample_quantiles(data: Vec<f64>, probabilities: &[f64]) -> Result<Vec<f64>, Refusal> {
+    for (i, &p) in probabilities.iter().enumerate() {
+        if !p.is_finite() {
+            return Err(Refusal {
+                code: Code::ValueNotFinite,
+                message: format!("probabilities[{i}]: expected a finite number, got {p}"),
+                fields: vec![
+                    ("parameter", Field::Str("probabilities")),
+                    ("index", Field::Num(i as f64)),
+                ],
+            });
+        }
+        if !(0.0..=1.0).contains(&p) {
+            return Err(Refusal::out_of_range(
+                Field::Path(format!("probabilities[{i}]")),
+                Bound::Closed(0.0),
+                Bound::Closed(1.0),
+                p,
+                format!("probabilities[{i}] must be in [0, 1], got {p}"),
+            ));
+        }
+    }
+    let sorted = sorted_sample("data", data)?;
+    Ok(probabilities
+        .iter()
+        .map(|&p| crate::stats::quantile_sorted(&sorted, p).expect("p checked to lie in [0, 1]"))
+        .collect())
+}
+
 /// A whole number in `[0, max]`.
 ///
 /// Whether the value is a whole number is a matter of its type, whether it is

@@ -140,8 +140,8 @@ MIT License — see [LICENSE](LICENSE).
 dotnet add package UNumflow
 ```
 
-The distributions (CDF, quantile, moments, seeded sampling) and interval sets,
-backed by this crate through its C ABI (the `ffi` feature) — see
+The distributions (CDF, quantile, moments, seeded sampling), sample statistics
+(median, R-7 quantiles), interval sets and units, backed by this crate through its C ABI (the `ffi` feature) — see
 [bindings/csharp/README.md](bindings/csharp/README.md). Refusals carry the same
 `code` and fields as the WebAssembly binding's.
 
@@ -163,7 +163,7 @@ file with an ES module import, which browsers refuse (`application/wasm` is not 
 module script type), so `<script type="module">` from a CDN fails, and CDN
 re-bundling services fail on the same import. Use a bundler or Node.
 
-Exported functions: `mean`, `std_dev`, `variance`, `normal_cdf`, `normal_sf` (upper tail `P(Z > x)`, computed directly so tail probabilities keep ~15 significant digits), `box_cox`, `estimate_lambda` (returns `{ lambda, at_bound }` — `at_bound` is `true` when the likelihood was still rising at an end of the search range, so `lambda` is that limit), and
+Exported functions: `mean`, `std_dev`, `variance`, `median`, `quantiles(data, probabilities) -> Float64Array` (sample quantiles in the order asked, R-7 linear interpolation — the default of R, NumPy and Excel — with one sort for all of them), `normal_cdf`, `normal_sf` (upper tail `P(Z > x)`, computed directly so tail probabilities keep ~15 significant digits), `box_cox`, `estimate_lambda` (returns `{ lambda, at_bound }` — `at_bound` is `true` when the likelihood was still rising at an end of the search range, so `lambda` is that limit), and
 `rfft(data) -> Float64Array` — the DFT of a real sequence of any length, interleaved as
 `[re0, im0, re1, im1, …]` (bins `k` and `n − k` are conjugates, so `0..=n/2` describes the spectrum).
 
@@ -172,6 +172,8 @@ element that is not a number (`null`, `undefined`, a string) throws `malformed_i
 and a NaN or ±Infinity throws `value_not_finite`, each with the element's `index` —
 `mean([1, null, 3])` throws rather than averaging the `null` as 0. `mean` of no values
 throws `empty_input`; `std_dev` and `variance` of fewer than 2 throw `insufficient_data`.
+`median` and `quantiles` of no values throw `empty_input`; a probability outside `[0, 1]`
+throws `parameter_out_of_range` with `parameter` `probabilities[i]`, `min` 0 and `max` 1.
 
 Distribution functions for critical values and p-values — each returns a `number` and
 **throws** (an `Error` naming the argument — see *Errors* below) when an argument is outside the domain,

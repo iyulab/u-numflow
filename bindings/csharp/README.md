@@ -9,6 +9,9 @@
   `Sample(n, seed)`: the same seed always gives the same values, and the
   uniforms behind them come from the open interval (0, 1), so no variate is
   infinite
+- **Sample statistics**: `Stats.Median`, `Stats.Quantile` and `Stats.Quantiles`
+  (several at once, one sort) — R-7 linear interpolation, the default of R,
+  NumPy and Excel
 - **Interval sets**: unions of half-open intervals `[start, end)` with
   `Union`, `Intersection`, `Difference`, `Clip`, `Contains` and a `Measure`
   that counts every point once, however much the input overlapped
@@ -38,6 +41,11 @@ double p = chi.Cdf(critical);               // 0.95
 
 // Reproducible samples
 double[] lives = Distribution.Weibull(shape: 2, scale: 100).Sample(1000, seed: 42);
+
+// Sample statistics: a time distribution's median is not pulled by one long case
+double[] minutes = [12, 7, 95, 9, 14, 11];
+double median = Stats.Median(minutes);                         // 11.5
+double[] q = Stats.Quantiles(minutes, [0.25, 0.5, 0.9]);       // [9.5, 11.5, 54.5]
 
 // Coverage arithmetic: overlapping stops are down-time once
 var planned = IntervalSet.From([(0, 24)]);

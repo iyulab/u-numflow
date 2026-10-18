@@ -7,6 +7,10 @@
 //! - `mean(data)` → `f64` (throws `empty_input` when `data` is empty)
 //! - `std_dev(data)` → `f64` (throws `insufficient_data` below 2 elements)
 //! - `variance(data)` → `f64` (throws `insufficient_data` below 2 elements)
+//! - `median(data)` → `f64` (throws `empty_input` when `data` is empty)
+//! - `quantiles(data, probabilities)` → `Float64Array` — R-7 sample quantiles in
+//!   the order asked (throws `empty_input`; a probability outside `[0, 1]` is
+//!   `parameter_out_of_range` at `probabilities[i]`)
 //! - `normal_cdf(x)` → `f64` — standard normal CDF Φ(x), i.e. N(0,1)
 //! - `normal_sf(x)` → `f64` — standard normal upper tail P(Z > x), tail-precise
 //! - `box_cox(data, lambda)` → `Result<Vec<f64>, JsValue>`
@@ -42,8 +46,8 @@ use wasm_bindgen::prelude::*;
 use crate::transforms::TransformError;
 use crate::wire::{
     check_finite, check_kind, check_probability, convert_units, distribution_refusal,
-    interval_set_from, unit_at, units_from, whole, Bound, Code, Field, Refusal, UnitDefinitionSpec,
-    UnitInfo,
+    interval_set_from, sample_median, sample_quantiles, unit_at, units_from, whole, Bound, Code,
+    Field, Refusal, UnitDefinitionSpec, UnitInfo,
 };
 
 /// One element of a JS number array, as found.
@@ -284,6 +288,35 @@ pub fn variance(
 ) -> Result<f64, JsValue> {
     let data = at_least(read_numbers(&data, "data")?, 2)?;
     Ok(crate::stats::variance(&data).expect("two or more finite values have a variance"))
+}
+
+/// Median of the sample `data` (even length: the mean of the middle two).
+///
+/// # Errors
+/// Throws `empty_input` when `data` is empty.
+#[wasm_bindgen]
+pub fn median(
+    #[wasm_bindgen(unchecked_param_type = "number[] | Float64Array")] data: JsValue,
+) -> Result<f64, JsValue> {
+    Ok(sample_median(read_numbers(&data, "data")?)?)
+}
+
+/// Sample quantiles of `data` at each of `probabilities`, in the order asked
+/// — R-7 linear interpolation (Hyndman & Fan 1996; the default of R, NumPy
+/// and Excel), sorting the sample once.
+///
+/// # Errors
+/// Throws `empty_input` when `data` is empty, and `parameter_out_of_range`
+/// (`parameter` `probabilities[i]`, `min` 0, `max` 1) for a probability
+/// outside `[0, 1]`.
+#[wasm_bindgen]
+pub fn quantiles(
+    #[wasm_bindgen(unchecked_param_type = "number[] | Float64Array")] data: JsValue,
+    #[wasm_bindgen(unchecked_param_type = "number[] | Float64Array")] probabilities: JsValue,
+) -> Result<Vec<f64>, JsValue> {
+    let data = read_numbers(&data, "data")?;
+    let probabilities = read_numbers(&probabilities, "probabilities")?;
+    Ok(sample_quantiles(data, &probabilities)?)
 }
 
 /// Standard normal CDF Φ(x) = P(Z ≤ x) for Z ~ N(0, 1).

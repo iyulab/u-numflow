@@ -322,6 +322,16 @@ fn entry_points() -> Vec<(&'static str, Entry, Value)> {
             json!({ "distribution": normal, "n": 3, "seed": 7 }),
         ),
         ep(
+            "unumflow_median",
+            unumflow_median,
+            json!({ "data": [3, 1, 2] }),
+        ),
+        ep(
+            "unumflow_quantiles",
+            unumflow_quantiles,
+            json!({ "data": [3, 1, 2], "probabilities": [0.25, 0.5] }),
+        ),
+        ep(
             "unumflow_interval_normalize",
             unumflow_interval_normalize,
             json!({ "intervals": intervals }),

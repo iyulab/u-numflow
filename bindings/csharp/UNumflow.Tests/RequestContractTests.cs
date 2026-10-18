@@ -51,6 +51,8 @@ public class RequestContractTests
         }))
         .Concat(new Dictionary<string, Action>
         {
+            ["Stats.Median"] = () => Stats.Median([3, 1, 2]),
+            ["Stats.Quantiles"] = () => Stats.Quantiles([3, 1, 2], [0.25, 0.5]),
             ["IntervalSet.From"] = () => IntervalSet.From([(0, 2), (1, 4), (6, 7)]),
             ["IntervalSet.Measure"] = () => _ = Set.Measure,
             ["IntervalSet.Contains"] = () => Set.Contains(1.5),
