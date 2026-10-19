@@ -407,6 +407,32 @@ pub fn regularized_lower_gamma(a: f64, x: f64) -> f64 {
     }
 }
 
+/// Regularized upper incomplete gamma function Q(a, x) = Γ(a, x) / Γ(a) = 1 − P(a, x).
+///
+/// Computed from the continued fraction where `x ≥ a + 1`, so a small tail
+/// keeps its relative precision instead of being the difference of two numbers
+/// near 1.
+///
+/// # Examples
+/// ```
+/// use u_numflow::special::regularized_upper_gamma;
+/// // Q(1, x) = exp(-x) for the exponential distribution
+/// assert!((regularized_upper_gamma(1.0, 40.0) / (-40.0f64).exp() - 1.0).abs() < 1e-12);
+/// ```
+pub fn regularized_upper_gamma(a: f64, x: f64) -> f64 {
+    if x <= 0.0 {
+        return 1.0;
+    }
+    if x == f64::INFINITY {
+        return 0.0;
+    }
+    if x < a + 1.0 {
+        1.0 - gamma_series(a, x)
+    } else {
+        gamma_cf(a, x)
+    }
+}
+
 /// Series expansion for the regularized lower incomplete gamma.
 fn gamma_series(a: f64, x: f64) -> f64 {
     let mut term = 1.0 / a;
@@ -719,6 +745,39 @@ pub fn t_distribution_cdf(t: f64, df: f64) -> f64 {
     }
 }
 
+/// Survival function of Student's t-distribution: P(T > t | df) = 1 − F(t).
+///
+/// Unlike `1.0 - t_distribution_cdf(..)`, the upper tail keeps its relative
+/// precision: `t_distribution_sf(30.0, 10.0)` is 1.98e-11 to full precision,
+/// where the complement of the CDF keeps about five digits and, further out,
+/// none. A two-sided p-value is `2 · t_distribution_sf(|t|, df)`.
+///
+/// # Returns
+/// - `f64::NAN` if df ≤ 0 or inputs are NaN.
+///
+/// # Examples
+/// ```
+/// use u_numflow::special::t_distribution_sf;
+/// assert_eq!(t_distribution_sf(0.0, 10.0), 0.5);
+/// // 1.98e-11, SciPy: scipy.stats.t.sf(30, 10)
+/// assert!((t_distribution_sf(30.0, 10.0) / 1.980896171015662e-11 - 1.0).abs() < 1e-9);
+/// ```
+pub fn t_distribution_sf(t: f64, df: f64) -> f64 {
+    if t.is_nan() || df.is_nan() || df <= 0.0 {
+        return f64::NAN;
+    }
+    if t == 0.0 {
+        return 0.5;
+    }
+    let x = df / (df + t * t);
+    let tail = regularized_incomplete_beta(x, df / 2.0, 0.5) / 2.0;
+    if t > 0.0 {
+        tail
+    } else {
+        1.0 - tail
+    }
+}
+
 /// PDF of Student's t-distribution.
 ///
 /// # Formula
@@ -818,6 +877,38 @@ pub fn f_distribution_cdf(x: f64, df1: f64, df2: f64) -> f64 {
     regularized_incomplete_beta(y, df1 / 2.0, df2 / 2.0)
 }
 
+/// Survival function of the F-distribution: P(X > x | df1, df2) = 1 − F(x).
+///
+/// ```text
+/// S(x; d1, d2) = I_z(d2/2, d1/2)   where z = d2 / (d1·x + d2)
+/// ```
+///
+/// `z` is formed directly, not as `1 − y`, so a small upper tail keeps its
+/// relative precision — `1.0 - f_distribution_cdf(..)` has none left below
+/// about 1e-16. This is the p-value of an F test.
+///
+/// # Returns
+/// - `f64::NAN` if df1 ≤ 0, df2 ≤ 0, or inputs are NaN.
+/// - `1.0` if x ≤ 0.
+///
+/// # Examples
+/// ```
+/// use u_numflow::special::f_distribution_sf;
+/// assert_eq!(f_distribution_sf(0.0, 5.0, 10.0), 1.0);
+/// // 2.56e-37, SciPy: scipy.stats.f.sf(1422.4107710431, 4, 34)
+/// assert!((f_distribution_sf(1422.4107710431, 4.0, 34.0) / 2.5558624671479177e-37 - 1.0).abs() < 1e-9);
+/// ```
+pub fn f_distribution_sf(x: f64, df1: f64, df2: f64) -> f64 {
+    if x.is_nan() || df1.is_nan() || df2.is_nan() || df1 <= 0.0 || df2 <= 0.0 {
+        return f64::NAN;
+    }
+    if x <= 0.0 {
+        return 1.0;
+    }
+    let z = df2 / (df1 * x + df2);
+    regularized_incomplete_beta(z, df2 / 2.0, df1 / 2.0)
+}
+
 /// Quantile function (inverse CDF) of the F-distribution.
 ///
 /// Given a probability `p ∈ (0, 1)`, returns `x` such that `P(X ≤ x) = p`.
@@ -896,6 +987,32 @@ pub fn chi_squared_cdf(x: f64, k: f64) -> f64 {
         return 0.0;
     }
     regularized_lower_gamma(k / 2.0, x / 2.0)
+}
+
+/// Survival function of the chi-squared distribution: P(X > x | k) = 1 − F(x).
+///
+/// `Q(k/2, x/2)` ([`regularized_upper_gamma`]): a small upper tail keeps its
+/// relative precision, where `1.0 - chi_squared_cdf(..)` rounds to zero below
+/// about 1e-16. This is the p-value of a chi-squared test.
+///
+/// # Returns
+/// - `f64::NAN` if k ≤ 0 or inputs are NaN.
+/// - `1.0` if x ≤ 0.
+///
+/// # Examples
+/// ```
+/// use u_numflow::special::chi_squared_sf;
+/// // k = 2 is an exponential: S(x) = exp(-x/2)
+/// assert!((chi_squared_sf(93.0, 2.0) / (-46.5f64).exp() - 1.0).abs() < 1e-12);
+/// ```
+pub fn chi_squared_sf(x: f64, k: f64) -> f64 {
+    if x.is_nan() || k.is_nan() || k <= 0.0 {
+        return f64::NAN;
+    }
+    if x <= 0.0 {
+        return 1.0;
+    }
+    regularized_upper_gamma(k / 2.0, x / 2.0)
 }
 
 /// Quantile function (inverse CDF) of the chi-squared distribution.
@@ -1922,4 +2039,94 @@ mod scipy_reference {
     }
 
     const TOL: f64 = 1e-12;
+}
+
+/// Upper tails against SciPy 1.17.1 (`scipy.stats.chi2.sf`, `f.sf`, `t.sf`), at
+/// sizes where the complement of the CDF has no digits left.
+#[cfg(test)]
+mod scipy_tail_reference {
+    use super::*;
+
+    fn close(got: f64, want: f64, what: &str) {
+        assert!(
+            (got - want).abs() <= 1e-9 * want.abs(),
+            "{what}: got {got:e}, SciPy {want:e}"
+        );
+    }
+
+    #[test]
+    fn chi_squared_sf_reproduces_scipy() {
+        for (x, k, want) in [
+            (93.0, 2.0, 6.387142293058413e-21),
+            (200.0, 5.0, 2.840622898641554e-41),
+            (50.0, 1.0, 1.537459794428033e-12),
+            (1000.0, 10.0, 1.870290720915977e-208),
+            (3.841, 1.0, 0.050013683763956804),
+            (0.5, 3.0, 0.9188914116546758),
+            (7.5, 2.5, 0.038169088215206766),
+            (30.0, 40.0, 0.875218784967475),
+        ] {
+            close(chi_squared_sf(x, k), want, &format!("chi2.sf({x}, {k})"));
+        }
+    }
+
+    #[test]
+    fn f_distribution_sf_reproduces_scipy() {
+        for (x, d1, d2, want) in [
+            (1422.4107710431, 4.0, 34.0, 2.5558624671479177e-37),
+            (88.622245, 2.0, 34.0, 3.264299228911802e-14),
+            (28.1253056582, 8.0, 30.0, 6.579056051547977e-12),
+            (3.0, 5.0, 10.0, 0.0655575620938441),
+            (0.2, 6.0, 12.0, 0.9703353508362454),
+            (250.0, 1.0, 1000.0, 1.9705760832196082e-50),
+            (11.0639154838, 4.0, 8.0, 0.00241021703771129),
+        ] {
+            close(
+                f_distribution_sf(x, d1, d2),
+                want,
+                &format!("f.sf({x}, {d1}, {d2})"),
+            );
+        }
+    }
+
+    #[test]
+    fn t_distribution_sf_reproduces_scipy() {
+        for (t, df, want) in [
+            (30.0, 10.0, 1.980896171015662e-11),
+            (8.0, 100.0, 1.1364324038640345e-12),
+            (-2.5, 7.0, 0.9795038907071235),
+            (1.0, 1.5, 0.22556768363835517),
+            (60.0, 5.0, 1.2168188794991892e-08),
+            (-40.0, 12.0, 0.9999999999999808),
+            (0.3, 2.0, 0.3962428304200888),
+        ] {
+            close(t_distribution_sf(t, df), want, &format!("t.sf({t}, {df})"));
+        }
+    }
+
+    #[test]
+    fn survival_and_cdf_add_to_one_where_both_have_digits() {
+        for (x, k) in [(0.5, 3.0), (4.0, 2.0), (12.0, 7.0)] {
+            assert!((chi_squared_cdf(x, k) + chi_squared_sf(x, k) - 1.0).abs() < 1e-13);
+        }
+        for (x, d1, d2) in [(0.7, 3.0, 9.0), (2.0, 5.0, 5.0), (6.0, 2.0, 20.0)] {
+            assert!(
+                (f_distribution_cdf(x, d1, d2) + f_distribution_sf(x, d1, d2) - 1.0).abs() < 1e-13
+            );
+        }
+        for (t, df) in [(-1.2, 4.0), (0.8, 9.0), (3.0, 3.0)] {
+            assert!((t_distribution_cdf(t, df) + t_distribution_sf(t, df) - 1.0).abs() < 1e-13);
+        }
+    }
+
+    #[test]
+    fn invalid_arguments_are_nan_and_the_far_side_is_one() {
+        assert!(chi_squared_sf(1.0, 0.0).is_nan() && chi_squared_sf(f64::NAN, 2.0).is_nan());
+        assert!(f_distribution_sf(1.0, 0.0, 3.0).is_nan());
+        assert!(t_distribution_sf(1.0, -1.0).is_nan());
+        assert_eq!(chi_squared_sf(0.0, 2.0), 1.0);
+        assert_eq!(chi_squared_sf(f64::INFINITY, 2.0), 0.0);
+        assert_eq!(f_distribution_sf(f64::INFINITY, 2.0, 3.0), 0.0);
+        assert_eq!(t_distribution_sf(f64::INFINITY, 4.0), 0.0);
+    }
 }

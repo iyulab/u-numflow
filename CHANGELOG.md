@@ -8,6 +8,15 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ## [Unreleased]
 
+### Added
+
+- Upper tails that keep their relative precision: `special::chi_squared_sf`,
+  `f_distribution_sf`, `t_distribution_sf` and `regularized_upper_gamma`. A
+  p-value taken as `1.0 - cdf` is the difference of two numbers near 1 and has
+  no digits left below about 1e-16 (a chi-squared of 200 on 5 degrees of
+  freedom is 2.8e-41); these return it to the precision of the incomplete
+  beta and gamma functions (relative 1e-9 against SciPy's `sf`).
+
 ### Changed
 
 - **Breaking:** `fourier::rfft` and the WebAssembly `rfft` return the
