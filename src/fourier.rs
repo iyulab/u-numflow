@@ -161,26 +161,29 @@ pub fn ifft(input: &[Complex]) -> Vec<Complex> {
         .collect()
 }
 
-/// Forward DFT of a real sequence.
+/// Forward DFT of a real sequence: the `n / 2 + 1` non-redundant bins
+/// `0..=n/2` (NumPy `numpy.fft.rfft`, SciPy `scipy.fft.rfft`, FFTW r2c).
 ///
-/// Returns all `n` bins; for real input the upper half mirrors the lower
-/// (`X_{n−k} = conj(X_k)`), so callers that only need the spectrum can stop
-/// at `n / 2`.
+/// For real input the rest mirrors them (`X_{n−k} = conj(X_k)`), so nothing
+/// is lost; [`fft`] of the same values, taken as complex, returns all `n`.
+/// An empty input gives an empty spectrum.
 ///
 /// # Examples
 ///
 /// ```
 /// use u_numflow::fourier::rfft;
 ///
-/// // One cycle of a cosine over 8 samples: energy at bins 1 and 7.
+/// // One cycle of a cosine over 8 samples: all its energy is in bin 1.
 /// let x: Vec<f64> = (0..8).map(|j| (2.0 * std::f64::consts::PI * j as f64 / 8.0).cos()).collect();
 /// let spectrum = rfft(&x);
+/// assert_eq!(spectrum.len(), 5);
 /// assert!((spectrum[1].re - 4.0).abs() < 1e-12);
-/// assert!((spectrum[7].re - 4.0).abs() < 1e-12);
 /// ```
 pub fn rfft(input: &[f64]) -> Vec<Complex> {
     let complex: Vec<Complex> = input.iter().map(|&x| Complex::real(x)).collect();
-    fft(&complex)
+    let mut spectrum = fft(&complex);
+    spectrum.truncate(input.len() / 2 + 1);
+    spectrum
 }
 
 /// Dispatches on the length: radix-2 for powers of two, Bluestein otherwise.
@@ -364,22 +367,40 @@ mod tests {
         ) {
             let n = data.len() as f64;
             let time: f64 = data.iter().map(|x| x * x).sum();
-            let freq: f64 = rfft(&data).iter().map(|z| z.norm_sqr()).sum::<f64>() / n;
+            // The full spectrum, rebuilt from the half rfft returns: every bin
+            // between DC and Nyquist stands for itself and its mirror.
+            let half = rfft(&data);
+            let len = data.len();
+            let freq: f64 = half
+                .iter()
+                .enumerate()
+                .map(|(k, z)| {
+                    let twice = k != 0 && 2 * k != len;
+                    z.norm_sqr() * if twice { 2.0 } else { 1.0 }
+                })
+                .sum::<f64>()
+                / n;
             prop_assert!((time - freq).abs() < 1e-7 * (1.0 + time), "{time} vs {freq}");
         }
 
-        /// Real input: the upper half of the spectrum is the conjugate mirror.
+        /// Real input: `rfft` is the first `n / 2 + 1` bins of `fft`, and the
+        /// bins it leaves out are their conjugate mirror.
         #[test]
         fn real_input_has_hermitian_spectrum(
             data in prop::collection::vec(-100.0f64..100.0, 2..=100)
         ) {
             let n = data.len();
-            let spectrum = rfft(&data);
-            for k in 1..n {
-                let mirror = spectrum[n - k].conj();
-                prop_assert!((spectrum[k] - mirror).norm() < 1e-7 * (1.0 + spectrum[k].norm()));
+            let half = rfft(&data);
+            prop_assert_eq!(half.len(), n / 2 + 1);
+            let full = fft(&data.iter().map(|&x| Complex::real(x)).collect::<Vec<_>>());
+            for k in 0..half.len() {
+                prop_assert!((half[k] - full[k]).norm() < 1e-9 * (1.0 + full[k].norm()));
             }
-            prop_assert!(spectrum[0].im.abs() < 1e-9);
+            for k in 1..n {
+                let mirror = full[n - k].conj();
+                prop_assert!((full[k] - mirror).norm() < 1e-7 * (1.0 + full[k].norm()));
+            }
+            prop_assert!(half[0].im.abs() < 1e-9);
         }
     }
 }
@@ -392,8 +413,7 @@ mod numpy_reference {
     #[test]
     fn rfft_of_an_odd_length_reproduces_numpy() {
         // numpy.fft.rfft([0.5, 1.5, -0.25, 2.0, 0.0, -1.0, 3.5, 1.25, -0.75]) -- length 9,
-        // not a power of two. NumPy returns bins 0..=n/2; this rfft returns all
-        // n, the rest mirroring them (X[n-k] = conj(X[k])).
+        // not a power of two. Both return the bins 0..=n/2.
         let got = rfft(&[0.5, 1.5, -0.25, 2.0, 0.0, -1.0, 3.5, 1.25, -0.75]);
         let want = [
             (6.75, 0.0),
@@ -402,16 +422,15 @@ mod numpy_reference {
             (5.625, -4.113620667976083),
             (-2.362373200137384, 0.5501191216763025),
         ];
-        assert_eq!(got.len(), 9);
+        assert_eq!(got.len(), 5);
         for (k, (re, im)) in want.into_iter().enumerate() {
-            let (g, mirror) = (got[k], got[(9 - k) % 9]);
+            let g = got[k];
             assert!(
                 (g.re - re).abs() <= 1e-12 && (g.im - im).abs() <= 1e-12,
                 "bin {k}: got {} + {}i, NumPy {re} + {im}i",
                 g.re,
                 g.im
             );
-            assert!((mirror.re - re).abs() <= 1e-12 && (mirror.im + im).abs() <= 1e-12);
         }
     }
 }

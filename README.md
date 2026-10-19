@@ -75,7 +75,7 @@ assert_eq!(transformed.len(), data.len());
 // Discrete Fourier transform of any length
 use u_numflow::fourier::rfft;
 let signal: Vec<f64> = (0..30).map(|j| (2.0 * std::f64::consts::PI * 3.0 * j as f64 / 30.0).sin()).collect();
-let spectrum = rfft(&signal);           // 30 complex bins; bin 3 carries the energy
+let spectrum = rfft(&signal);           // bins 0..=15 (n / 2 + 1); bin 3 carries the energy
 assert!(spectrum[3].norm() > 14.0);
 
 // Interval sets: overlapping stops are down-time once, not twice
@@ -164,8 +164,9 @@ module script type), so `<script type="module">` from a CDN fails, and CDN
 re-bundling services fail on the same import. Use a bundler or Node.
 
 Exported functions: `mean`, `std_dev`, `variance`, `median`, `quantiles(data, probabilities) -> Float64Array` (sample quantiles in the order asked, R-7 linear interpolation — the default of R, NumPy and Excel — with one sort for all of them), `normal_cdf`, `normal_sf` (upper tail `P(Z > x)`, computed directly so tail probabilities keep ~15 significant digits), `box_cox`, `estimate_lambda` (returns `{ lambda, at_bound }` — `at_bound` is `true` when the likelihood was still rising at an end of the search range, so `lambda` is that limit), and
-`rfft(data) -> Float64Array` — the DFT of a real sequence of any length, interleaved as
-`[re0, im0, re1, im1, …]` (bins `k` and `n − k` are conjugates, so `0..=n/2` describes the spectrum).
+`rfft(data) -> Float64Array` — the DFT of a real sequence of any length: bins `0..=n/2`
+(`n / 2 + 1` of them, as NumPy's `rfft`), interleaved as `[re0, im0, re1, im1, …]`
+(bins `k` and `n − k` are conjugates, so these describe the spectrum in full).
 
 Every `data` argument is a `number[]` or a `Float64Array`, read exactly as sent: an
 element that is not a number (`null`, `undefined`, a string) throws `malformed_input`

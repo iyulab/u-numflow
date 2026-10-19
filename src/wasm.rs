@@ -15,7 +15,7 @@
 //! - `normal_sf(x)` → `f64` — standard normal upper tail P(Z > x), tail-precise
 //! - `box_cox(data, lambda)` → `Result<Vec<f64>, JsValue>`
 //! - `estimate_lambda(data, lambda_min, lambda_max)` → `{ lambda, at_bound }` (or throws)
-//! - `rfft(data)` → `Vec<f64>` — DFT of a real sequence, interleaved `[re0, im0, re1, im1, …]`
+//! - `rfft(data)` → `Vec<f64>` — DFT of a real sequence, bins `0..=n/2` interleaved `[re0, im0, re1, im1, …]`
 //! - `inverse_normal_cdf(p)` → `f64` — standard normal quantile (throws outside `(0, 1)`)
 //! - `t_distribution_cdf(t, df)` / `t_distribution_quantile(p, df)` → `f64` (throw on an invalid argument)
 //! - `f_distribution_cdf(x, df1, df2)` / `f_distribution_quantile(p, df1, df2)` → `f64` (same)
@@ -403,9 +403,10 @@ pub fn estimate_lambda(
 
 /// Forward DFT of a real sequence of any length.
 ///
-/// Returns the `n` complex bins interleaved as `[re0, im0, re1, im1, …]`
-/// (length `2n`). Bins `k` and `n − k` are conjugates, so the spectrum of a
-/// real signal is fully described by bins `0..=n/2`.
+/// Returns the `n / 2 + 1` bins `0..=n/2` interleaved as
+/// `[re0, im0, re1, im1, …]` (length `2 * (n / 2 + 1)`, as NumPy's
+/// `rfft`). Bins `k` and `n − k` are conjugates, so these describe the
+/// spectrum of a real signal in full.
 ///
 /// # Errors
 /// Throws as every `data` argument does for an element that is not a finite

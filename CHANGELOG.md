@@ -8,6 +8,15 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking:** `fourier::rfft` and the WebAssembly `rfft` return the
+  `n / 2 + 1` bins `0..=n/2`, as NumPy's, SciPy's and FFTW's real transforms
+  do, instead of all `n` (the upper half only mirrored the lower:
+  `X[n−k] = conj(X[k])`). A caller that needs all `n` bins takes `fft` of the
+  values as complex; one that read bins `0..=n/2` is unaffected. The WebAssembly
+  array is `2 * (n / 2 + 1)` numbers long.
+
 ## [0.14.1] - 2026-10-18
 
 The .NET client is `UNumflow` 0.8.0. The Rust API is unchanged: what is new are

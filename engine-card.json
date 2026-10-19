@@ -441,7 +441,7 @@
     },
     {
       "id": "rfft",
-      "summary": "The discrete Fourier transform of a real sequence of any length, as interleaved [re, im] pairs for all n bins (radix-2 for powers of two, Bluestein otherwise).",
+      "summary": "The discrete Fourier transform of a real sequence of any length, as interleaved [re, im] pairs for bins 0..=n/2 (radix-2 for powers of two, Bluestein otherwise).",
       "input": {
         "schema": "schemas/wasm.schema.json#/$defs/rfft.input",
         "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
@@ -471,7 +471,7 @@
         "status": "partial",
         "checks": [
           {
-            "claim": "Bins 0..=n/2 of a length-9 (not power-of-two) transform match the reference, and the rest are their conjugates.",
+            "claim": "Bins 0..=n/2 of a length-9 (not power-of-two) transform match the reference, bin for bin.",
             "reference_kind": "reference_implementation",
             "reference": "NumPy 2.4.6, numpy.fft.rfft",
             "method": "compares each bin's real and imaginary parts with the reference's",
