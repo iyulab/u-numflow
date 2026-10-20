@@ -723,7 +723,14 @@ impl Matrix {
         }
 
         let max_sweeps = 100;
-        let tol = 1e-15;
+        // Relative to the matrix: an absolute tolerance would leave a matrix
+        // whose entries are all below it unrotated and return its diagonal as
+        // the eigenvalues.
+        let scale = self.frobenius_norm();
+        if scale == 0.0 {
+            return Ok((vec![0.0; n], Matrix::identity(n)));
+        }
+        let tol = 1e-15 * scale;
 
         for _ in 0..max_sweeps {
             // Compute off-diagonal Frobenius norm
@@ -1368,5 +1375,32 @@ mod proptests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn eigen_symmetric_does_not_depend_on_the_scale_of_the_matrix() {
+        let base = Matrix::from_rows(&[&[4.0, 1.0, 0.5], &[1.0, 3.0, 0.25], &[0.5, 0.25, 2.0]]);
+        let (want, _) = base.eigen_symmetric().expect("symmetric");
+        for scale in [1e-3, 1e-12, 1e-18, 1e-24, 1e12] {
+            let scaled = Matrix::from_rows(&[
+                &[4.0 * scale, 1.0 * scale, 0.5 * scale],
+                &[1.0 * scale, 3.0 * scale, 0.25 * scale],
+                &[0.5 * scale, 0.25 * scale, 2.0 * scale],
+            ]);
+            let (got, vectors) = scaled.eigen_symmetric().expect("symmetric");
+            for (g, w) in got.iter().zip(&want) {
+                assert!((g / scale - w).abs() < 1e-12, "scale {scale}: {g} vs {w}");
+            }
+            // Orthonormal eigenvectors at any scale.
+            let dot: f64 = (0..3).map(|r| vectors.get(r, 0) * vectors.get(r, 1)).sum();
+            assert!(dot.abs() < 1e-10, "scale {scale}: dot {dot}");
+        }
+        // The zero matrix has zero eigenvalues and the identity for vectors.
+        let (zeros, vectors) = Matrix::new(2, 2, vec![0.0; 4])
+            .expect("2x2")
+            .eigen_symmetric()
+            .expect("symmetric");
+        assert_eq!(zeros, vec![0.0, 0.0]);
+        assert_eq!(vectors.get(0, 0), 1.0);
     }
 }

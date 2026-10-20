@@ -26,6 +26,16 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
   values as complex; one that read bins `0..=n/2` is unaffected. The WebAssembly
   array is `2 * (n / 2 + 1)` numbers long.
 
+### Fixed
+
+- `Matrix::eigen_symmetric` does not depend on the scale of the matrix. Its
+  convergence test and its skip of tiny off-diagonal entries compared against
+  fixed numbers (1e-15), so a matrix whose entries were all smaller than that,
+  such as the covariance of data measured in units near 1e-9, was never rotated
+  and its diagonal came back as the eigenvalues and the identity as the
+  eigenvectors. The tolerance is now 1e-15 times the matrix's Frobenius norm;
+  the zero matrix returns zero eigenvalues and the identity.
+
 ## [0.14.1] - 2026-10-18
 
 The .NET client is `UNumflow` 0.8.0. The Rust API is unchanged: what is new are
