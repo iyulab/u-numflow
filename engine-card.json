@@ -71,7 +71,20 @@
         "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_unseeded_randomness"
       },
       "validation": {
-        "status": "none"
+        "status": "partial",
+        "checks": [
+          {
+            "claim": "The mean of a 41-value and a 40-value normal draw equals NumPy's (sample variance with ddof = 1, median of an even length is the mean of the middle pair), and the variance of 60 values on an offset of 1e9 with unit spread equals the exact-arithmetic variance.",
+            "reference_kind": "reference_implementation",
+            "reference": "NumPy 2.4.6 mean, var(ddof=1), std(ddof=1), median; exact rational arithmetic (fractions) for the offset case",
+            "method": "compares the odd and even samples, and the offset sample",
+            "tolerance": "1e-12 to 1e-14 (relative); 1e-6 on the offset variance",
+            "test": "tests/reference_core.rs::descriptive_statistics_match_numpy"
+          }
+        ],
+        "limits": [
+          "Finite data of ordinary magnitude; overflow of the squares near 1e154 is not covered."
+        ]
       },
       "performance": {
         "status": "none",
@@ -107,7 +120,20 @@
         "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_unseeded_randomness"
       },
       "validation": {
-        "status": "none"
+        "status": "partial",
+        "checks": [
+          {
+            "claim": "The standard deviation of a 41-value and a 40-value normal draw equals NumPy's (sample variance with ddof = 1, median of an even length is the mean of the middle pair), and the variance of 60 values on an offset of 1e9 with unit spread equals the exact-arithmetic variance.",
+            "reference_kind": "reference_implementation",
+            "reference": "NumPy 2.4.6 mean, var(ddof=1), std(ddof=1), median; exact rational arithmetic (fractions) for the offset case",
+            "method": "compares the odd and even samples, and the offset sample",
+            "tolerance": "1e-12 to 1e-14 (relative); 1e-6 on the offset variance",
+            "test": "tests/reference_core.rs::descriptive_statistics_match_numpy"
+          }
+        ],
+        "limits": [
+          "Finite data of ordinary magnitude; overflow of the squares near 1e154 is not covered."
+        ]
       },
       "performance": {
         "status": "none",
@@ -143,7 +169,20 @@
         "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_unseeded_randomness"
       },
       "validation": {
-        "status": "none"
+        "status": "partial",
+        "checks": [
+          {
+            "claim": "The variance of a 41-value and a 40-value normal draw equals NumPy's (sample variance with ddof = 1, median of an even length is the mean of the middle pair), and the variance of 60 values on an offset of 1e9 with unit spread equals the exact-arithmetic variance.",
+            "reference_kind": "reference_implementation",
+            "reference": "NumPy 2.4.6 mean, var(ddof=1), std(ddof=1), median; exact rational arithmetic (fractions) for the offset case",
+            "method": "compares the odd and even samples, and the offset sample",
+            "tolerance": "1e-12 to 1e-14 (relative); 1e-6 on the offset variance",
+            "test": "tests/reference_core.rs::descriptive_statistics_match_numpy"
+          }
+        ],
+        "limits": [
+          "Finite data of ordinary magnitude; overflow of the squares near 1e154 is not covered."
+        ]
       },
       "performance": {
         "status": "none",
@@ -179,7 +218,20 @@
         "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_unseeded_randomness"
       },
       "validation": {
-        "status": "none"
+        "status": "partial",
+        "checks": [
+          {
+            "claim": "The median of a 41-value and a 40-value normal draw equals NumPy's (sample variance with ddof = 1, median of an even length is the mean of the middle pair), and the variance of 60 values on an offset of 1e9 with unit spread equals the exact-arithmetic variance.",
+            "reference_kind": "reference_implementation",
+            "reference": "NumPy 2.4.6 mean, var(ddof=1), std(ddof=1), median; exact rational arithmetic (fractions) for the offset case",
+            "method": "compares the odd and even samples, and the offset sample",
+            "tolerance": "1e-12 to 1e-14 (relative); 1e-6 on the offset variance",
+            "test": "tests/reference_core.rs::descriptive_statistics_match_numpy"
+          }
+        ],
+        "limits": [
+          "Finite data of ordinary magnitude; overflow of the squares near 1e154 is not covered."
+        ]
       },
       "performance": {
         "status": "none",
@@ -1024,7 +1076,20 @@
         "note": "The seed is a required argument; there is no unseeded call."
       },
       "validation": {
-        "status": "none"
+        "status": "partial",
+        "checks": [
+          {
+            "claim": "The fraction of a 20,000-value seeded sample below each of the 0.1, 0.25, 0.5, 0.75 and 0.9 quantiles of the same distribution (uniform, triangular, normal, log-normal, Weibull, exponential, gamma, beta, chi-squared, PERT) is that probability to four standard errors.",
+            "reference_kind": "reference_implementation",
+            "reference": "SciPy 1.17.1 ppf of the matching distribution (PERT as the scaled beta with 1 + 4(mode-min)/(max-min) and 1 + 4(max-mode)/(max-min))",
+            "method": "draws 20,000 values with seed 11 for one parameter set of each distribution",
+            "tolerance": "4 standard errors of the binomial fraction",
+            "test": "tests/reference_core.rs::sampled_values_fall_below_the_scipy_quantiles_with_the_right_frequency"
+          }
+        ],
+        "limits": [
+          "One parameter set per distribution; the draws are specific to this crate's generator and are compared with SciPy's distribution, not SciPy's stream. The crate's own tests also compare each sample with the distribution's CDF (Kolmogorov-Smirnov)."
+        ]
       },
       "performance": {
         "status": "none",
@@ -1060,7 +1125,20 @@
         "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_unseeded_randomness"
       },
       "validation": {
-        "status": "none"
+        "status": "partial",
+        "checks": [
+          {
+            "claim": "Union, intersection and difference of interval sets equal the point-wise set operations on half-open intervals [start, end), the results are in normal form (sorted, disjoint, not touching, non-empty), and the measure is the total length.",
+            "reference_kind": "literature",
+            "reference": "the definition of the operations on half-open intervals (Halmos, Measure Theory); a brute-force oracle on a half-unit grid",
+            "method": "200 random pairs of sets of up to five intervals with integer ends, every grid point and every unit cell",
+            "tolerance": "exact",
+            "test": "tests/reference_core.rs::interval_sets_are_the_pointwise_set_operations"
+          }
+        ],
+        "limits": [
+          "Integer endpoints on a small grid; floating-point endpoints are covered by unit tests."
+        ]
       },
       "performance": {
         "status": "none",
@@ -1096,7 +1174,20 @@
         "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_unseeded_randomness"
       },
       "validation": {
-        "status": "none"
+        "status": "partial",
+        "checks": [
+          {
+            "claim": "Union, intersection and difference of interval sets equal the point-wise set operations on half-open intervals [start, end), the results are in normal form (sorted, disjoint, not touching, non-empty), and the measure is the total length.",
+            "reference_kind": "literature",
+            "reference": "the definition of the operations on half-open intervals (Halmos, Measure Theory); a brute-force oracle on a half-unit grid",
+            "method": "200 random pairs of sets of up to five intervals with integer ends, every grid point and every unit cell",
+            "tolerance": "exact",
+            "test": "tests/reference_core.rs::interval_sets_are_the_pointwise_set_operations"
+          }
+        ],
+        "limits": [
+          "Integer endpoints on a small grid; floating-point endpoints are covered by unit tests."
+        ]
       },
       "performance": {
         "status": "none",
@@ -1132,7 +1223,20 @@
         "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_unseeded_randomness"
       },
       "validation": {
-        "status": "none"
+        "status": "partial",
+        "checks": [
+          {
+            "claim": "Union, intersection and difference of interval sets equal the point-wise set operations on half-open intervals [start, end), the results are in normal form (sorted, disjoint, not touching, non-empty), and the measure is the total length.",
+            "reference_kind": "literature",
+            "reference": "the definition of the operations on half-open intervals (Halmos, Measure Theory); a brute-force oracle on a half-unit grid",
+            "method": "200 random pairs of sets of up to five intervals with integer ends, every grid point and every unit cell",
+            "tolerance": "exact",
+            "test": "tests/reference_core.rs::interval_sets_are_the_pointwise_set_operations"
+          }
+        ],
+        "limits": [
+          "Integer endpoints on a small grid; floating-point endpoints are covered by unit tests."
+        ]
       },
       "performance": {
         "status": "none",
@@ -1168,7 +1272,20 @@
         "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_unseeded_randomness"
       },
       "validation": {
-        "status": "none"
+        "status": "partial",
+        "checks": [
+          {
+            "claim": "Union, intersection and difference of interval sets equal the point-wise set operations on half-open intervals [start, end), the results are in normal form (sorted, disjoint, not touching, non-empty), and the measure is the total length.",
+            "reference_kind": "literature",
+            "reference": "the definition of the operations on half-open intervals (Halmos, Measure Theory); a brute-force oracle on a half-unit grid",
+            "method": "200 random pairs of sets of up to five intervals with integer ends, every grid point and every unit cell",
+            "tolerance": "exact",
+            "test": "tests/reference_core.rs::interval_sets_are_the_pointwise_set_operations"
+          }
+        ],
+        "limits": [
+          "Integer endpoints on a small grid; floating-point endpoints are covered by unit tests."
+        ]
       },
       "performance": {
         "status": "none",
@@ -1204,7 +1321,20 @@
         "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_unseeded_randomness"
       },
       "validation": {
-        "status": "none"
+        "status": "partial",
+        "checks": [
+          {
+            "claim": "Union, intersection and difference of interval sets equal the point-wise set operations on half-open intervals [start, end), the results are in normal form (sorted, disjoint, not touching, non-empty), and the measure is the total length.",
+            "reference_kind": "literature",
+            "reference": "the definition of the operations on half-open intervals (Halmos, Measure Theory); a brute-force oracle on a half-unit grid",
+            "method": "200 random pairs of sets of up to five intervals with integer ends, every grid point and every unit cell",
+            "tolerance": "exact",
+            "test": "tests/reference_core.rs::interval_sets_are_the_pointwise_set_operations"
+          }
+        ],
+        "limits": [
+          "Integer endpoints on a small grid; floating-point endpoints are covered by unit tests."
+        ]
       },
       "performance": {
         "status": "none",
@@ -1240,7 +1370,20 @@
         "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_unseeded_randomness"
       },
       "validation": {
-        "status": "none"
+        "status": "partial",
+        "checks": [
+          {
+            "claim": "Prefixed and compound SI expressions convert by the factors their definitions give (km, cm, mmol, kPa, MHz, uV, mT, dam, g/cm3, N.m, W.s, V = W/A, ...), Celsius converts with the 273.15 offset and a difference without it, other dimensions and an offset unit inside a product are refused.",
+            "reference_kind": "standard",
+            "reference": "the SI Brochure (BIPM, 9th ed.) definitions of the prefixes and coherent derived units; UCUM (Schadow & McDonald) expression syntax",
+            "method": "converts 22 expressions and checks the refusals",
+            "tolerance": "1e-12 (relative)",
+            "test": "tests/reference_core.rs::si_conversions_follow_from_the_definitions"
+          }
+        ],
+        "limits": [
+          "SI units only (other units are defined by the caller); UCUM's special units (e.g. logarithmic) and the full annotation syntax are not covered."
+        ]
       },
       "performance": {
         "status": "none",
@@ -1276,7 +1419,20 @@
         "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_unseeded_randomness"
       },
       "validation": {
-        "status": "none"
+        "status": "partial",
+        "checks": [
+          {
+            "claim": "Prefixed and compound SI expressions convert by the factors their definitions give (km, cm, mmol, kPa, MHz, uV, mT, dam, g/cm3, N.m, W.s, V = W/A, ...), Celsius converts with the 273.15 offset and a difference without it, other dimensions and an offset unit inside a product are refused.",
+            "reference_kind": "standard",
+            "reference": "the SI Brochure (BIPM, 9th ed.) definitions of the prefixes and coherent derived units; UCUM (Schadow & McDonald) expression syntax",
+            "method": "converts 22 expressions and checks the refusals",
+            "tolerance": "1e-12 (relative)",
+            "test": "tests/reference_core.rs::si_conversions_follow_from_the_definitions"
+          }
+        ],
+        "limits": [
+          "SI units only (other units are defined by the caller); UCUM's special units (e.g. logarithmic) and the full annotation syntax are not covered."
+        ]
       },
       "performance": {
         "status": "none",
@@ -1312,7 +1468,20 @@
         "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_unseeded_randomness"
       },
       "validation": {
-        "status": "none"
+        "status": "partial",
+        "checks": [
+          {
+            "claim": "Prefixed and compound SI expressions convert by the factors their definitions give (km, cm, mmol, kPa, MHz, uV, mT, dam, g/cm3, N.m, W.s, V = W/A, ...), Celsius converts with the 273.15 offset and a difference without it, other dimensions and an offset unit inside a product are refused.",
+            "reference_kind": "standard",
+            "reference": "the SI Brochure (BIPM, 9th ed.) definitions of the prefixes and coherent derived units; UCUM (Schadow & McDonald) expression syntax",
+            "method": "converts 22 expressions and checks the refusals",
+            "tolerance": "1e-12 (relative)",
+            "test": "tests/reference_core.rs::si_conversions_follow_from_the_definitions"
+          }
+        ],
+        "limits": [
+          "SI units only (other units are defined by the caller); UCUM's special units (e.g. logarithmic) and the full annotation syntax are not covered."
+        ]
       },
       "performance": {
         "status": "none",
