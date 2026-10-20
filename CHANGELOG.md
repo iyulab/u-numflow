@@ -8,6 +8,8 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-10-20
+
 ### Added
 
 - Upper tails that keep their relative precision: `special::chi_squared_sf`,

@@ -4,7 +4,7 @@
   "engine": {
     "id": "u-numflow",
     "summary": "Numerical primitives: descriptive statistics and sample quantiles, normal, t, F and chi-squared distribution functions, parametric distributions with seeded sampling, Box-Cox, real FFT of any length, half-open interval sets and unit conversion.",
-    "version": "0.14.1",
+    "version": "0.15.0",
     "license": "MIT",
     "repository": "https://github.com/iyulab/u-numflow"
   },
@@ -12,15 +12,15 @@
     {
       "kind": "crate",
       "name": "u-numflow",
-      "package_version": "0.14.1",
-      "engine_version": "0.14.1",
+      "package_version": "0.15.0",
+      "engine_version": "0.15.0",
       "error_shape": "Err(...) of the module's error type where a function can refuse; statistics of too few values return None, and the bare distribution functions return NaN outside their domain."
     },
     {
       "kind": "npm",
       "name": "@iyulab/u-numflow",
-      "package_version": "0.14.1",
-      "engine_version": "0.14.1",
+      "package_version": "0.15.0",
+      "engine_version": "0.15.0",
       "wasm": true,
       "note": "Numbers arrays may be passed as number[] or Float64Array; arguments and results are typed in the .d.ts. Bundler and Node targets; no bundler-less browser build.",
       "error_shape": "A thrown Error whose code property is the code, with the fields (parameter, index, min, max, exclusive_min, got, expected, ...) as its other properties."
@@ -28,8 +28,8 @@
     {
       "kind": "nuget",
       "name": "UNumflow",
-      "package_version": "0.8.0",
-      "engine_version": "0.14.1",
+      "package_version": "0.8.1",
+      "engine_version": "0.15.0",
       "note": "C ABI wrapper over the same wire layer; versioned on its own axis, not with the crate.",
       "error_shape": "A NumflowException whose ErrorCode is the code, Parameter and Index the fields of those names, and Details the rest."
     }
