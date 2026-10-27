@@ -24,6 +24,14 @@
 //! - **Reproducibility**: Seeded RNG support for deterministic experiments
 //! - **Property-based testing**: Mathematical invariants verified via proptest
 
+/// This crate's version, as published (`CARGO_PKG_VERSION`) — for a consumer
+/// that reports what it was built against without reading a lock file.
+///
+/// ```
+/// assert!(!u_numflow::VERSION.is_empty());
+/// ```
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 pub mod collections;
 pub mod distributions;
 pub mod fourier;
