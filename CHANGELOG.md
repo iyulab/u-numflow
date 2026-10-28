@@ -8,6 +8,8 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-10-29
+
 ### Added
 
 - `optimize::nelder_mead` (with `NelderMeadOptions`, `Minimum`): derivative-free local
