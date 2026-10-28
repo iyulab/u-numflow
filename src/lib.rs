@@ -16,6 +16,7 @@
 //! - [`collections`] — Specialized data structures (Union-Find)
 //! - [`transforms`] — Box-Cox power transformation
 //! - [`fourier`] — Discrete Fourier transform of any length (radix-2 / Bluestein)
+//! - [`optimize`] — Derivative-free local minimisation (Nelder–Mead)
 //!
 //! ## Design Philosophy
 //!
@@ -36,6 +37,7 @@ pub mod collections;
 pub mod distributions;
 pub mod fourier;
 pub mod matrix;
+pub mod optimize;
 pub mod random;
 pub mod special;
 pub mod stats;

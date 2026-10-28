@@ -20,6 +20,7 @@ u-numflow provides foundational mathematical, statistical, and probabilistic bui
 | `special` | Special functions: normal CDF and tail-precise survival function (and their inverses), t/F/chi² CDF and quantiles, the noncentral t CDF (Lenth AS 243 — the distribution power is computed from), regularized incomplete beta/gamma, erf |
 | `transforms` | Data transformations: Box-Cox (λ via MLE golden-section search), inverse Box-Cox |
 | `fourier` | Discrete Fourier transform of any length (radix-2 for powers of two, Bluestein otherwise): `fft`, `ifft`, `rfft`, `Complex` |
+| `optimize` | Derivative-free local minimisation of a function of several variables: `nelder_mead` (Nelder–Mead simplex, dimension-adaptive coefficients, relative tolerances) |
 | `matrix` | Dense matrix operations: determinant, inverse, Cholesky decomposition, Jacobi eigenvalue decomposition |
 | `random` | Seeded RNG, Fisher-Yates shuffle, weighted sampling, random subset selection |
 | `distributions::Sample` | Random variates from every continuous distribution — `sample(&mut rng)` and reproducible `sample_n(n, seed)`; inversion where the quantile is direct, Marsaglia–Tsang for the gamma family (Gamma, χ², Beta, PERT); uniforms from the open interval (0, 1), so no variate is infinite |

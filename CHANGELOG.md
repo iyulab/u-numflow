@@ -10,6 +10,11 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ### Added
 
+- `optimize::nelder_mead` (with `NelderMeadOptions`, `Minimum`): derivative-free local
+  minimisation of a function of several variables by the Nelder–Mead simplex method, with the
+  dimension-adaptive coefficients of Gao & Han (2012) and relative stopping tolerances, so the
+  stopping point does not depend on the units. Deterministic; a non-finite value of the
+  objective refuses the point. Takes a closure, so it has no WebAssembly or C counterpart.
 - `VERSION`: the crate's own version (`CARGO_PKG_VERSION`) as a constant at the
   crate root, so a consumer can report what it was built against without
   reading a lock file -- which names the wrong version once the crate is linked
