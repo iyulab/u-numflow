@@ -25,16 +25,20 @@
 //! with adaptive parameters", *Computational Optimization and Applications*
 //! 51(1), 259-277.
 
-/// Stopping rules of [`nelder_mead`]. The tolerances are relative, so the
-/// stopping point does not depend on the units of the variables or the values.
+/// Stopping rules of [`nelder_mead`]. The tolerances are relative to the
+/// problem's own scale, so the stopping point does not depend on the units of
+/// the variables or the values: a value is judged against the larger of the
+/// best value and the size of the values at the start, a coordinate against the
+/// larger of itself and its initial step.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct NelderMeadOptions {
-    /// Stop when every vertex's value is within `f_tolerance · (1 + |best|)`
-    /// of the best's (and the simplex within `x_tolerance`). Default 1e-10.
+    /// Stop when every vertex's value is within `f_tolerance` times the
+    /// larger of `|best|` and the largest value at the start, of the best's
+    /// (and the simplex within `x_tolerance`). Default 1e-10.
     pub f_tolerance: f64,
-    /// Stop when every vertex is within `x_tolerance · (1 + |best|)` of the
-    /// best in every coordinate (and the values within `f_tolerance`).
-    /// Default 1e-8.
+    /// Stop when every vertex is within `x_tolerance` times the larger of the
+    /// best's coordinate and that coordinate's first step, of the best in
+    /// every coordinate (and the values within `f_tolerance`). Default 1e-8.
     pub x_tolerance: f64,
     /// Most objective evaluations. Default 1000 per variable, at least 2000.
     pub max_evaluations: usize,
@@ -119,14 +123,30 @@ pub fn nelder_mead<F: FnMut(&[f64]) -> f64>(
         (1.0, 1.0 + 2.0 / nf, 0.75 - 1.0 / (2.0 * nf), 1.0 - 1.0 / nf)
     };
 
+    // A coordinate that starts at zero takes a step in proportion to the other
+    // coordinates, so that the first simplex does not depend on their unit.
+    let start_scale = x0
+        .iter()
+        .filter(|v| **v != 0.0)
+        .fold(0.0_f64, |a, v| a.max(v.abs()));
+    let zero_step = 0.00025 * if start_scale > 0.0 { start_scale } else { 1.0 };
     let mut simplex: Vec<Vec<f64>> = Vec::with_capacity(n + 1);
     simplex.push(x0.to_vec());
     for i in 0..n {
         let mut v = x0.to_vec();
-        v[i] = if v[i] != 0.0 { v[i] * 1.05 } else { 0.00025 };
+        v[i] = if v[i] != 0.0 { v[i] * 1.05 } else { zero_step };
         simplex.push(v);
     }
     let mut values: Vec<f64> = simplex.iter().map(|v| eval(v)).collect();
+    // The problem's own scales, from the start: no coordinate or value is
+    // compared with a fixed number.
+    let x_ref: Vec<f64> = (0..n)
+        .map(|i| (simplex[i + 1][i] - x0[i]).abs().max(x0[i].abs()))
+        .collect();
+    let f_ref = values
+        .iter()
+        .filter(|v| v.is_finite())
+        .fold(0.0_f64, |a, v| a.max(v.abs()));
     let mut order: Vec<usize> = (0..=n).collect();
     let mut converged = false;
 
@@ -142,10 +162,11 @@ pub fn nelder_mead<F: FnMut(&[f64]) -> f64>(
             simplex[i]
                 .iter()
                 .zip(&simplex[best])
-                .all(|(a, b)| (a - b).abs() <= options.x_tolerance * (1.0 + b.abs()))
+                .zip(&x_ref)
+                .all(|((a, b), r)| (a - b).abs() <= options.x_tolerance * b.abs().max(*r))
         });
         // An infinite best leaves `f_spread` NaN: not converged.
-        if f_spread <= options.f_tolerance * (1.0 + values[best].abs()) && x_close {
+        if f_spread <= options.f_tolerance * values[best].abs().max(f_ref) && x_close {
             converged = true;
             break;
         }
@@ -295,6 +316,28 @@ mod tests {
                 (m.x[0] / k - 2.0).abs() < 1e-5 && (m.x[1] / k + 1.0).abs() < 1e-5,
                 "{k}: {m:?}"
             );
+        }
+    }
+
+    #[test]
+    fn the_stopping_point_is_the_same_in_any_unit_of_the_variables_and_the_values() {
+        // The variables in `k` and the objective in `s`, from picounits to
+        // teraunits: the minimum, in the variables' own unit, is found as well
+        // and the search says it converged, whatever the units.
+        for k in [1e-12, 1e-9, 1e-6, 1.0, 1e6, 1e9, 1e12] {
+            for s in [1e-14, 1e-6, 1.0, 1e6, 1e14] {
+                let f = move |x: &[f64]| {
+                    s * (((x[0] - 2.0 * k) / k).powi(2)
+                        + ((x[1] + k) / k).powi(2)
+                        + 0.5 * ((x[0] - 2.0 * k) / k) * ((x[1] + k) / k))
+                };
+                let m = nelder_mead(f, &[k, k], NelderMeadOptions::for_dimension(2));
+                assert!(m.converged, "k {k:e}, s {s:e}: {m:?}");
+                assert!(
+                    (m.x[0] / k - 2.0).abs() < 1e-5 && (m.x[1] / k + 1.0).abs() < 1e-5,
+                    "k {k:e}, s {s:e}: {m:?}"
+                );
+            }
         }
     }
 }

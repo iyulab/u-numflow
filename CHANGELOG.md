@@ -8,6 +8,20 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ## [Unreleased]
 
+### Fixed
+
+- `optimize::nelder_mead` stopped by a number, not by the problem's scale: the
+  tolerances were `tolerance · (1 + |value|)` and `tolerance · (1 + |coordinate|)`,
+  and a coordinate that started at zero took a fixed first step of 0.00025. In
+  small units the first simplex was already inside the tolerance, so a search
+  declared `converged` after three evaluations at the start point (variables near
+  1e-12, values near 1e-14); in large ones the value tolerance could not be met and
+  the search spent its whole budget unconverged. The value is now judged against
+  the larger of the best value and the largest value at the start, a coordinate
+  against the larger of itself and its first step, and a zero start's step in
+  proportion to the other coordinates. Where the problem is of ordinary size the
+  stopping point is as before.
+
 ## [0.16.0] - 2026-10-29
 
 ### Added
