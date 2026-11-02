@@ -251,15 +251,19 @@ impl Triangular {
         self.max
     }
 
-    /// Mean = (min + mode + max) / 3.
+    /// Mean = (min + mode + max) / 3, summed in thirds so three large
+    /// values do not overflow.
     pub fn mean(&self) -> f64 {
-        (self.min + self.mode + self.max) / 3.0
+        self.min / 3.0 + self.mode / 3.0 + self.max / 3.0
     }
 
-    /// Variance = (a² + b² + c² − ab − ac − bc) / 18.
+    /// Variance = (a² + b² + c² − ab − ac − bc) / 18, computed as
+    /// `((a−b)² + (a−c)² + (b−c)²) / 36`: the same quantity without the
+    /// cancellation of the expanded form, which loses every digit when the
+    /// range is narrow next to its location.
     pub fn variance(&self) -> f64 {
         let (a, b, c) = (self.min, self.mode, self.max);
-        (a * a + b * b + c * c - a * b - a * c - b * c) / 18.0
+        ((a - b).powi(2) + (a - c).powi(2) + (b - c).powi(2)) / 36.0
     }
 
     /// PDF of the triangular distribution.
@@ -271,12 +275,14 @@ impl Triangular {
     /// ```
     pub fn pdf(&self, x: f64) -> f64 {
         let (a, b, c) = (self.min, self.mode, self.max);
+        // Each factor is a ratio of at most 1 or 2/(c−a): the products of
+        // widths themselves overflow long before the density does.
         if x < a || x > c {
             0.0
         } else if x <= b {
-            2.0 * (x - a) / ((c - a) * (b - a).max(f64::MIN_POSITIVE))
+            2.0 / (c - a) * ((x - a) / (b - a).max(f64::MIN_POSITIVE))
         } else {
-            2.0 * (c - x) / ((c - a) * (c - b).max(f64::MIN_POSITIVE))
+            2.0 / (c - a) * ((c - x) / (c - b).max(f64::MIN_POSITIVE))
         }
     }
 
@@ -288,12 +294,14 @@ impl Triangular {
     /// ```
     pub fn cdf(&self, x: f64) -> f64 {
         let (a, b, c) = (self.min, self.mode, self.max);
+        // As ratios of widths, each at most 1: the products of widths
+        // overflow for a range near the largest double.
         if x <= a {
             0.0
         } else if x <= b {
-            (x - a) * (x - a) / ((c - a) * (b - a).max(f64::MIN_POSITIVE))
+            (x - a) / (c - a) * ((x - a) / (b - a).max(f64::MIN_POSITIVE))
         } else if x < c {
-            1.0 - (c - x) * (c - x) / ((c - a) * (c - b).max(f64::MIN_POSITIVE))
+            1.0 - (c - x) / (c - a) * ((c - x) / (c - b).max(f64::MIN_POSITIVE))
         } else {
             1.0
         }
@@ -313,10 +321,11 @@ impl Triangular {
         }
         let (a, b, c) = (self.min, self.mode, self.max);
         let fc = (b - a) / (c - a); // CDF at the mode
+                                    // The square root of a product of widths, taken factor by factor.
         if p < fc {
-            Some(a + ((c - a) * (b - a) * p).sqrt())
+            Some(a + (c - a).sqrt() * (b - a).sqrt() * p.sqrt())
         } else {
-            Some(c - ((c - a) * (c - b) * (1.0 - p)).sqrt())
+            Some(c - (c - a).sqrt() * (c - b).sqrt() * (1.0 - p).sqrt())
         }
     }
 }
@@ -438,10 +447,14 @@ impl LogNormal {
         (self.mu + self.sigma * self.sigma / 2.0).exp()
     }
 
-    /// Variance = (exp(σ²) − 1) · exp(2μ + σ²).
+    /// Variance = (exp(σ²) − 1) · exp(2μ + σ²), evaluated as
+    /// `exp(2μ + 2σ² + ln(1 − exp(−σ²)))`: one exponential of the whole
+    /// logarithm, so a factor that overflows (exp(σ²) for σ = 30) cannot make
+    /// infinite a variance that is in range, and `1 − exp(−σ²)` is taken with
+    /// `expm1`, so a small σ does not round the variance to 0.
     pub fn variance(&self) -> f64 {
         let s2 = self.sigma * self.sigma;
-        (s2.exp() - 1.0) * (2.0 * self.mu + s2).exp()
+        (2.0 * self.mu + 2.0 * s2 + (-(-s2).exp_m1()).ln()).exp()
     }
 
     /// PDF for x > 0.
@@ -932,9 +945,10 @@ impl GammaDistribution {
         self.shape / self.rate
     }
 
-    /// Variance = α/β².
+    /// Variance = α/β², divided by β twice rather than by β²: a small rate
+    /// squared underflows to 0 while the variance itself is in range.
     pub fn variance(&self) -> f64 {
-        self.shape / (self.rate * self.rate)
+        self.shape / self.rate / self.rate
     }
 
     /// Mode = (α−1)/β for α ≥ 1, 0 for α < 1.
@@ -967,7 +981,12 @@ impl GammaDistribution {
         if x <= 0.0 {
             return 0.0;
         }
-        special::regularized_lower_gamma(self.shape, self.rate * x)
+        let z = self.rate * x;
+        // βx past the largest double: every finite quantile lies below it.
+        if z == f64::INFINITY {
+            return 1.0;
+        }
+        special::regularized_lower_gamma(self.shape, z)
     }
 
     /// Quantile (inverse CDF) via Newton-Raphson iteration.
@@ -1060,10 +1079,14 @@ impl BetaDistribution {
         self.alpha / (self.alpha + self.beta)
     }
 
-    /// Returns the variance: αβ / ((α+β)²(α+β+1)).
+    /// Returns the variance: αβ / ((α+β)²(α+β+1)), as m(1−m)/(α+β+1) with
+    /// m = α/(α+β) -- the products αβ and (α+β)² underflow for tiny shapes
+    /// and overflow for huge ones while the variance is in range.
     pub fn variance(&self) -> f64 {
         let ab = self.alpha + self.beta;
-        self.alpha * self.beta / (ab * ab * (ab + 1.0))
+        let m = self.alpha / ab;
+        let n = self.beta / ab;
+        m * n / (ab + 1.0)
     }
 
     /// Returns the mode.
@@ -1239,6 +1262,62 @@ impl ChiSquared {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Widths whose products overflow, or whose squares cancel: the values
+    /// are in range and come out finite and right.
+    #[test]
+    fn extreme_parameters_keep_values_that_are_in_range() {
+        let t = Triangular::new(-1e300, -1e300, 1e300).unwrap();
+        assert!((t.cdf(0.0) - 0.75).abs() < 1e-12, "{}", t.cdf(0.0));
+        assert!(
+            t.quantile(0.75).unwrap().abs() < 1e286,
+            "{:?}",
+            t.quantile(0.75)
+        );
+        assert!((t.pdf(0.0) - 0.5e-300).abs() < 1e-312);
+        // Narrow next to its location: the expanded variance cancelled to 0.
+        let narrow = Triangular::new(1e9, 1e9 + 1.0, 1e9 + 2.0).unwrap();
+        assert!(
+            (narrow.variance() - 1.0 / 6.0).abs() < 1e-12,
+            "{}",
+            narrow.variance()
+        );
+
+        let ln = LogNormal::new(-700.0, 30.0).unwrap();
+        // exp(2μ + 2σ²)·(1 − exp(−σ²)) = exp(400), though exp(σ²) overflows.
+        assert!(
+            (ln.variance() / 400f64.exp() - 1.0).abs() < 1e-9,
+            "{}",
+            ln.variance()
+        );
+        let tight = LogNormal::new(0.0, 1e-8).unwrap();
+        assert!(
+            (tight.variance() / 1e-16 - 1.0).abs() < 1e-6,
+            "{}",
+            tight.variance()
+        );
+
+        let g = GammaDistribution::new(1e-300, 1e-300).unwrap();
+        assert!(
+            (g.variance() / 1e300 - 1.0).abs() < 1e-12,
+            "{}",
+            g.variance()
+        );
+        assert_eq!(GammaDistribution::new(1e-8, 1e300).unwrap().cdf(1e300), 1.0);
+
+        let tiny = BetaDistribution::new(1e-300, 1e-300).unwrap();
+        assert!(
+            (tiny.variance() - 0.25).abs() < 1e-12,
+            "{}",
+            tiny.variance()
+        );
+        let huge = BetaDistribution::new(1e300, 1e300).unwrap();
+        assert!(
+            (huge.variance() / 1.25e-301 - 1.0).abs() < 1e-9,
+            "{}",
+            huge.variance()
+        );
+    }
 
     // --- Uniform ---
 

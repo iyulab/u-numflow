@@ -120,8 +120,29 @@ impl Sample for ChiSquared {
     }
 }
 
+/// `ln X` for `X ~ Gamma(shape, rate 1)`, drawing exactly what
+/// [`standard_gamma`] draws: for a small shape the variate itself underflows
+/// to 0 (`U^(1/a)` with `a = 1e-8` is 0 for almost every `U`), its logarithm
+/// does not.
+fn ln_standard_gamma<R: Rng + ?Sized>(shape: f64, rng: &mut R) -> f64 {
+    if shape < 1.0 {
+        return ln_standard_gamma(shape + 1.0, rng) + open_unit(rng).ln() / shape;
+    }
+    standard_gamma(shape, rng).ln()
+}
+
 /// `X / (X + Y)` with `X ~ Gamma(α)`, `Y ~ Gamma(β)`.
+///
+/// When both shapes are below 1 the draws are taken in logarithms and the
+/// ratio as `1 / (1 + exp(ln Y − ln X))`: for tiny shapes both draws
+/// underflow to 0 and `X / (X + Y)` is 0/0, while the ratio is a number in
+/// [0, 1] (near 0 or 1, as the distribution's mass is).
 fn beta_variate<R: Rng + ?Sized>(alpha: f64, beta: f64, rng: &mut R) -> f64 {
+    if alpha < 1.0 || beta < 1.0 {
+        let lx = ln_standard_gamma(alpha, rng);
+        let ly = ln_standard_gamma(beta, rng);
+        return 1.0 / (1.0 + (ly - lx).exp());
+    }
     let x = standard_gamma(alpha, rng);
     let y = standard_gamma(beta, rng);
     x / (x + y)
@@ -142,6 +163,21 @@ impl Sample for Pert {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Shapes so small that both gamma draws underflow to 0: the beta
+    /// variates are still numbers in [0, 1], near its ends.
+    #[test]
+    fn beta_with_tiny_shapes_samples_numbers_at_its_ends() {
+        let mut rng = crate::random::create_rng(5);
+        for (a, b) in [(1e-300, 1e-300), (1e-8, 1e-8), (1e-8, 1e-300)] {
+            let d = BetaDistribution::new(a, b).unwrap();
+            for _ in 0..50 {
+                let x = d.sample(&mut rng);
+                assert!((0.0..=1.0).contains(&x), "Beta({a}, {b}): {x}");
+                assert!(!(1e-6..=1.0 - 1e-6).contains(&x), "Beta({a}, {b}): {x}");
+            }
+        }
+    }
 
     /// Kolmogorov–Smirnov distance between `xs` and `cdf`.
     fn ks(mut xs: Vec<f64>, cdf: impl Fn(f64) -> f64) -> f64 {

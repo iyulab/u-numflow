@@ -10,6 +10,14 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ### Fixed
 
+- Distributions at the ends of their parameter range answered NaN or infinity where the value is an ordinary
+  number: a triangular distribution over a range near ±1e300 (its CDF, quantiles, density and samples multiplied
+  widths that overflow), the variance of a triangular distribution narrow next to its location (cancelled to 0),
+  the log-normal variance when `exp(σ²)` overflows or `σ` is tiny (rounded to 0), the gamma variance for a tiny
+  rate, the gamma CDF where `rate · x` overflows, the beta variance for tiny or huge shapes, and beta samples for
+  shapes below 1 (both gamma draws underflowed, giving 0/0 -- now drawn in logarithms).
+- The C ABI writes its answers from typed values: a non-finite number could turn into `null` while the answer was
+  assembled, in a field read as a number.
 - `optimize::nelder_mead` stopped by a number, not by the problem's scale: the
   tolerances were `tolerance · (1 + |value|)` and `tolerance · (1 + |coordinate|)`,
   and a coordinate that started at zero took a fixed first step of 0.00025. In

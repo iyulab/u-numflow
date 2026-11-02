@@ -16,10 +16,42 @@
 
 use super::request_keys::{call, entry_points};
 use serde_json::Value;
-use std::sync::Mutex;
+use std::cell::{Cell, RefCell};
+use std::sync::Once;
 
-/// The message of the last panic on an entry point call.
-static LAST_PANIC: Mutex<Option<String>> = Mutex::new(None);
+thread_local! {
+    /// The message of the last panic on this thread, while `QUIET`.
+    static LAST_PANIC: RefCell<Option<String>> = const { RefCell::new(None) };
+    /// This thread expects panics (an entry point catches them) and keeps
+    /// their messages instead of printing them.
+    static QUIET: Cell<bool> = const { Cell::new(false) };
+}
+
+/// Installs, once for the test binary, a panic hook that hands a quiet
+/// thread's panic message to [`last_panic`] and prints every other panic as
+/// before. Replacing the hook per test would race with the tests running
+/// beside it.
+pub(super) fn quiet_panics() {
+    static HOOK: Once = Once::new();
+    HOOK.call_once(|| {
+        let previous = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            if QUIET.with(Cell::get) {
+                LAST_PANIC.with(|l| *l.borrow_mut() = Some(info.to_string()));
+            } else {
+                previous(info);
+            }
+        }));
+    });
+    QUIET.with(|q| q.set(true));
+}
+
+/// The message of the last panic on this thread since the last call.
+pub(super) fn last_panic() -> String {
+    LAST_PANIC
+        .with(|l| l.borrow_mut().take())
+        .unwrap_or_default()
+}
 
 /// One way to make an array degenerate.
 #[derive(Clone, Copy, Debug)]
@@ -161,10 +193,7 @@ fn apply(request: &mut Value, target: &Target, shape: Shape) -> bool {
 
 #[test]
 fn degenerate_inputs_are_refused_or_answered_never_internal() {
-    let previous = std::panic::take_hook();
-    std::panic::set_hook(Box::new(|info| {
-        *LAST_PANIC.lock().expect("not poisoned") = Some(info.to_string());
-    }));
+    quiet_panics();
     let mut failures = Vec::new();
     let mut calls = 0;
     for (name, entry, base) in entry_points() {
@@ -190,20 +219,15 @@ fn degenerate_inputs_are_refused_or_answered_never_internal() {
             }
         }
         for (what, request) in variants {
-            *LAST_PANIC.lock().expect("not poisoned") = None;
+            last_panic();
             let (_, body) = call(entry, &request);
             calls += 1;
             if body.get("code").and_then(Value::as_str) == Some("internal") {
-                let why = LAST_PANIC
-                    .lock()
-                    .expect("not poisoned")
-                    .take()
-                    .unwrap_or_default();
+                let why = last_panic();
                 failures.push(format!("{name} [{what}]: {why}"));
             }
         }
     }
-    std::panic::set_hook(previous);
     assert!(calls > 0, "no degenerate request was made");
     assert!(
         failures.is_empty(),
