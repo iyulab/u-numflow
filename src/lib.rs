@@ -46,6 +46,8 @@ pub mod units;
 
 #[cfg(feature = "ffi")]
 pub mod ffi;
+#[cfg(all(test, feature = "ffi"))]
+mod finite_out;
 #[cfg(feature = "wasm")]
 pub mod wasm;
 

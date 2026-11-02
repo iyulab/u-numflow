@@ -44,7 +44,7 @@ use std::ffi::{CStr, CString};
 use std::panic;
 
 use serde::de::DeserializeOwned;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use crate::collections::IntervalSet;
@@ -87,6 +87,45 @@ fn field_json(f: Field) -> Value {
         Field::List(names) => json!(names),
         Field::Null => Value::Null,
     }
+}
+
+// ── Responses ─────────────────────────────────────────────────────────────
+//
+// Each answer is a typed value, made JSON by `out` -- never assembled with
+// `json!`: a non-finite number there turns into `null` before anything can
+// look at it, in a field the caller reads as a number. In a test build `out`
+// fails on one instead, so every test that reaches a response checks it.
+
+#[derive(Serialize)]
+struct Moments {
+    mean: f64,
+    variance: f64,
+}
+
+#[derive(Serialize)]
+struct Number {
+    value: f64,
+}
+
+#[derive(Serialize)]
+struct Numbers {
+    values: Vec<f64>,
+}
+
+#[derive(Serialize)]
+struct Flag {
+    value: bool,
+}
+
+#[derive(Serialize)]
+struct Pieces {
+    intervals: Vec<[f64; 2]>,
+}
+
+fn out<T: Serialize>(value: &T) -> Result<Value, Failure> {
+    #[cfg(test)]
+    crate::finite_out::assert_finite(value);
+    Ok(serde_json::to_value(value).expect("a response serializes"))
 }
 
 /// Writes `value` as JSON to `*result_ptr`; `-1` if `result_ptr` is null.
@@ -173,8 +212,10 @@ fn intervals(parameter: &'static str, rows: Vec<Vec<f64>>) -> Result<IntervalSet
     interval_set_from(parameter, rows).map_err(refused)
 }
 
-fn pieces(set: &IntervalSet<f64>) -> Value {
-    json!({ "intervals": set.iter().map(|(s, e)| [s, e]).collect::<Vec<_>>() })
+fn pieces(set: &IntervalSet<f64>) -> Result<Value, Failure> {
+    out(&Pieces {
+        intervals: set.iter().map(|(s, e)| [s, e]).collect(),
+    })
 }
 
 #[derive(Deserialize)]
@@ -301,7 +342,10 @@ export!(
     |text| {
         let r: DistOnly = parse(text)?;
         let d = distribution(r.distribution)?;
-        Ok(json!({ "mean": d.mean(), "variance": d.variance() }))
+        out(&Moments {
+            mean: d.mean(),
+            variance: d.variance(),
+        })
     }
 );
 
@@ -313,7 +357,7 @@ export!(
         let d = distribution(r.distribution)?;
         let x = required("x", r.x)?;
         check_finite("x", x).map_err(refused)?;
-        Ok(json!({ "value": d.cdf(x) }))
+        out(&Number { value: d.cdf(x) })
     }
 );
 
@@ -325,7 +369,9 @@ export!(
         let d = distribution(r.distribution)?;
         let p = required("p", r.p)?;
         check_probability(p).map_err(refused)?;
-        Ok(json!({ "value": d.quantile(p) }))
+        out(&Number {
+            value: d.quantile(p),
+        })
     }
 );
 
@@ -339,7 +385,9 @@ export!(
         let d = distribution(r.distribution)?;
         let n = whole("n", r.n, u32::MAX as f64).map_err(refused)? as usize;
         let seed = whole("seed", r.seed, 9_007_199_254_740_992.0).map_err(refused)? as u64;
-        Ok(json!({ "values": d.sample_n(n, seed) }))
+        out(&Numbers {
+            values: d.sample_n(n, seed),
+        })
     }
 );
 
@@ -349,7 +397,9 @@ export!(
     unumflow_median,
     |text| {
         let r: Sample = parse(text)?;
-        Ok(json!({ "value": sample_median(r.data).map_err(refused)? }))
+        out(&Number {
+            value: sample_median(r.data).map_err(refused)?,
+        })
     }
 );
 
@@ -359,7 +409,9 @@ export!(
     unumflow_quantiles,
     |text| {
         let r: SampleAt = parse(text)?;
-        Ok(json!({ "values": sample_quantiles(r.data, &r.probabilities).map_err(refused)? }))
+        out(&Numbers {
+            values: sample_quantiles(r.data, &r.probabilities).map_err(refused)?,
+        })
     }
 );
 
@@ -368,7 +420,7 @@ export!(
     unumflow_interval_normalize,
     |text| {
         let r: One = parse(text)?;
-        Ok(pieces(&intervals("intervals", r.intervals)?))
+        pieces(&intervals("intervals", r.intervals)?)
     }
 );
 
@@ -377,7 +429,9 @@ export!(
     unumflow_interval_measure,
     |text| {
         let r: One = parse(text)?;
-        Ok(json!({ "value": intervals("intervals", r.intervals)?.measure() }))
+        out(&Number {
+            value: intervals("intervals", r.intervals)?.measure(),
+        })
     }
 );
 
@@ -387,7 +441,9 @@ export!(
     |text| {
         let r: OneAt = parse(text)?;
         let t = required("t", r.t)?;
-        Ok(json!({ "value": intervals("intervals", r.intervals)?.contains(t) }))
+        out(&Flag {
+            value: intervals("intervals", r.intervals)?.contains(t),
+        })
     }
 );
 
@@ -396,7 +452,7 @@ export!(
     unumflow_interval_union,
     |text| {
         let r: Two = parse(text)?;
-        Ok(pieces(&intervals("a", r.a)?.union(&intervals("b", r.b)?)))
+        pieces(&intervals("a", r.a)?.union(&intervals("b", r.b)?))
     }
 );
 
@@ -405,7 +461,7 @@ export!(
     unumflow_interval_intersection,
     |text| {
         let r: Two = parse(text)?;
-        Ok(pieces(&intervals("a", r.a)?.intersection(&intervals("b", r.b)?)))
+        pieces(&intervals("a", r.a)?.intersection(&intervals("b", r.b)?))
     }
 );
 
@@ -414,7 +470,7 @@ export!(
     unumflow_interval_difference,
     |text| {
         let r: Two = parse(text)?;
-        Ok(pieces(&intervals("a", r.a)?.difference(&intervals("b", r.b)?)))
+        pieces(&intervals("a", r.a)?.difference(&intervals("b", r.b)?))
     }
 );
 
@@ -424,7 +480,7 @@ export!(
     |text| {
         let r: Convert = parse(text)?;
         let value = convert_units(r.value, &r.from, &r.to, &r.definitions, false).map_err(refused)?;
-        Ok(json!({ "value": value }))
+        out(&Number { value })
     }
 );
 
@@ -435,7 +491,7 @@ export!(
     |text| {
         let r: Convert = parse(text)?;
         let value = convert_units(r.value, &r.from, &r.to, &r.definitions, true).map_err(refused)?;
-        Ok(json!({ "value": value }))
+        out(&Number { value })
     }
 );
 
@@ -446,7 +502,7 @@ export!(
         let r: Info = parse(text)?;
         let units = units_from(&r.definitions).map_err(refused)?;
         let info = UnitInfo::from(unit_at(&units, &r.unit, "unit").map_err(refused)?);
-        Ok(serde_json::to_value(info).expect("a unit info serializes"))
+        out(&info)
     }
 );
 
@@ -997,3 +1053,9 @@ mod tests {
 
 #[cfg(test)]
 mod request_keys;
+
+#[cfg(test)]
+mod degenerate_inputs;
+
+#[cfg(test)]
+mod distribution_extremes;
