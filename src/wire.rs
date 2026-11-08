@@ -58,6 +58,7 @@ pub(crate) enum Code {
     DimensionMismatch,
     InvalidOption,
     DuplicateId,
+    ResultOverflow,
     Internal,
 }
 
@@ -106,7 +107,7 @@ pub(crate) fn code_catalog() -> Codes {
 }
 
 impl Code {
-    pub(crate) const ALL: [Code; 15] = [
+    pub(crate) const ALL: [Code; 16] = [
         Code::MalformedInput,
         Code::ValueNotFinite,
         Code::ParameterOutOfRange,
@@ -121,6 +122,7 @@ impl Code {
         Code::DimensionMismatch,
         Code::InvalidOption,
         Code::DuplicateId,
+        Code::ResultOverflow,
         Code::Internal,
     ];
 
@@ -140,6 +142,7 @@ impl Code {
             Code::DimensionMismatch => "dimension_mismatch",
             Code::InvalidOption => "invalid_option",
             Code::DuplicateId => "duplicate_id",
+            Code::ResultOverflow => "result_overflow",
             Code::Internal => "internal",
         }
     }
@@ -168,6 +171,7 @@ impl Code {
             Code::DimensionMismatch => &["parameter", "expected", "got"],
             Code::InvalidOption => &["parameter"],
             Code::DuplicateId => &["parameter", "id", "index"],
+            Code::ResultOverflow => &["parameter", "index"],
             Code::Internal => &[],
         }
     }
@@ -288,6 +292,57 @@ pub(crate) fn check_finite(name: &'static str, x: f64) -> Result<(), Refusal> {
         })
     } else {
         Ok(())
+    }
+}
+
+/// An answer that does not fit in a double. The arguments were valid and the
+/// true value exists, but no number can carry it -- a variance beyond
+/// `f64::MAX`, a quantile of a heavy tail past it. `parameter` names the
+/// answer (`mean`, `variance`, `quantile`, `values`) and `index` the position
+/// in an array of them. (NaN is not this: it is a computation that failed.)
+impl Refusal {
+    pub(crate) fn result_overflow(
+        parameter: &'static str,
+        index: Option<usize>,
+        value: f64,
+    ) -> Self {
+        let mut fields = vec![("parameter", Field::Str(parameter))];
+        let at = match index {
+            Some(i) => {
+                fields.push(("index", Field::Num(i as f64)));
+                format!("{parameter}[{i}]")
+            }
+            None => parameter.to_string(),
+        };
+        Refusal {
+            code: Code::ResultOverflow,
+            message: format!(
+                "{at}: the result is {} the largest number a double holds, though the arguments are valid",
+                if value > 0.0 { "above" } else { "below the negative of" }
+            ),
+            fields,
+        }
+    }
+}
+
+/// `value`, or `result_overflow` if it is an infinity (NaN passes: it is a
+/// failed computation, not an overflow).
+pub(crate) fn within_range(parameter: &'static str, value: f64) -> Result<f64, Refusal> {
+    if value.is_infinite() {
+        Err(Refusal::result_overflow(parameter, None, value))
+    } else {
+        Ok(value)
+    }
+}
+
+/// `values` unchanged, or `result_overflow` at the first infinity.
+pub(crate) fn all_within_range(
+    parameter: &'static str,
+    values: Vec<f64>,
+) -> Result<Vec<f64>, Refusal> {
+    match values.iter().position(|v| v.is_infinite()) {
+        Some(i) => Err(Refusal::result_overflow(parameter, Some(i), values[i])),
+        None => Ok(values),
     }
 }
 

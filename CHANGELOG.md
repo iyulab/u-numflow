@@ -8,6 +8,14 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ## [Unreleased]
 
+### Added
+
+- A new shared refusal, `result_overflow` (`parameter`, `index`): the arguments are valid and the answer exists, but
+  it is beyond the largest number a double holds. `distribution_moments`, `distribution_quantile` and
+  `distribution_sample` (WebAssembly and C ABI) refuse with it where they used to send an infinity -- which JSON
+  cannot carry, so the C ABI sent `null` in a field declared a number. `parameter` names the answer (`mean`,
+  `variance`, `quantile`, `values`); for `values`, `index` is the first variate that overflows.
+
 ### Fixed
 
 - The regularized incomplete beta and gamma functions (every beta, gamma and chi-squared CDF, and the F and

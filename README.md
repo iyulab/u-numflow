@@ -297,6 +297,7 @@ try {
 | `dimension_mismatch` | `parameter`, `expected`, `got` | `unit_convert` between units of different dimensions — `parameter` is `to`, `expected` the dimension of `from` and `got` that of `to`, both in SI base units (`m3`, `kg`) |
 | `invalid_option` | `parameter` | A scale with an offset (`Cel`, or a defined one) given a prefix, an exponent or a product — it has a meaning only alone |
 | `duplicate_id` | `parameter`, `id`, `index` | A unit definition whose `symbol` is already a unit (built in or defined before) — `index` is the definition's position |
+| `result_overflow` | `parameter`, `index` | The arguments are valid and the answer exists, but it is beyond the largest number a double holds (the variance of a uniform on ±1e300, a high quantile of a heavy tail): `parameter` names the answer (`mean`, `variance`, `quantile`, `values`) and `index` the first variate of `values` that overflows. NaN is never this |
 | `reversed_interval` | `parameter`, `index` | An interval row with start > end — refused, not swapped |
 | `value_not_finite` | `parameter`, `index` for an array element | A NaN argument, an infinite `n`, `seed`, `lambda_min` or `lambda_max`, or a NaN or infinity in any `data` array or interval row (`parameter` is the row's path); a NaN or infinite `value` to convert or definition `factor` / `offset` |
 | `empty_input` | `parameter` | `mean` of no values |

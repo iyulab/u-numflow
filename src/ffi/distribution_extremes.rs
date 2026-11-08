@@ -4,25 +4,17 @@
 //! The answer is a number or a refusal -- never `internal`, which in a test
 //! build is also what a non-finite number in a response becomes.
 //!
-//! Two kinds are still tracked rather than closed. A result beyond the range
-//! of a double (the variance of a uniform on ±1e300, a high quantile of a
-//! Weibull of shape 1e-8) has no number to be sent as; what the wire says
-//! for one is an open decision, so an infinity is counted, not failed. A
-//! regularized incomplete gamma at a shape parameter near 1e300 has
-//! no asymptotic expansion here yet and answers NaN: those three requests are
-//! listed. Any other NaN fails.
+//! A result beyond the range of a double (the variance of a uniform on ±1e300,
+//! a high quantile of a Weibull of shape 1e-8) has no number to be sent as: it
+//! is refused as `result_overflow`, naming the answer, and an infinity that
+//! reaches a response fails. A NaN fails too.
 
 use super::degenerate_inputs::{last_panic, quiet_panics};
 use super::request_keys::{call, Entry};
 use serde_json::{json, Value};
 
-/// The requests that still answer NaN: the incomplete gamma function at a
-/// shape parameter near 1e300.
-const KNOWN_NAN: [&str; 3] = [
-    r#"cdf {"distribution":{"k":1e+300,"kind":"chi_squared"},"x":1e+300}"#,
-    r#"cdf {"distribution":{"kind":"gamma","rate":1.0,"shape":1e+300},"x":1e+300}"#,
-    r#"cdf {"distribution":{"kind":"gamma","rate":1e+300,"shape":1e+300},"x":1.0}"#,
-];
+/// The requests that still answer NaN: none.
+const KNOWN_NAN: [&str; 0] = [];
 
 fn specs() -> Vec<Value> {
     let tiny = 1e-300;
@@ -65,6 +57,7 @@ fn every_distribution_at_its_extremes_answers_without_nan() {
     let mut nan = Vec::new();
     let mut other = Vec::new();
     let mut overflow = 0;
+    let mut refused = 0;
     let mut calls = 0;
     for d in specs() {
         let mut requests: Vec<(&str, Entry, Value)> = vec![(
@@ -95,6 +88,15 @@ fn every_distribution_at_its_extremes_answers_without_nan() {
             last_panic();
             let (_, body) = call(entry, &request);
             calls += 1;
+            if body.get("code").and_then(Value::as_str) == Some("result_overflow") {
+                refused += 1;
+                if !["mean", "variance", "quantile", "values"]
+                    .contains(&body["parameter"].as_str().unwrap_or(""))
+                {
+                    other.push(format!("{what} {request}: {body}"));
+                }
+                continue;
+            }
             if body.get("code").and_then(Value::as_str) != Some("internal") {
                 continue;
             }
@@ -104,10 +106,18 @@ fn every_distribution_at_its_extremes_answers_without_nan() {
                 nan.push(at);
             } else if why.contains("inf at") {
                 overflow += 1;
+                eprintln!("inf: {at}: {why}");
             } else {
                 other.push(format!("{at}: {why}"));
             }
         }
+    }
+    eprintln!("sweep: {calls} calls, {refused} refused as result_overflow, {overflow} infinite, {} NaN, {} other", nan.len(), other.len());
+    for n in nan.iter().take(8) {
+        eprintln!("nan: {n}");
+    }
+    for o in other.iter().take(8) {
+        eprintln!("other: {o}");
     }
     assert!(
         other.is_empty(),
@@ -118,10 +128,46 @@ fn every_distribution_at_its_extremes_answers_without_nan() {
 "
         )
     );
+    eprintln!(
+        "sweep: {calls} calls, {refused} refused as result_overflow, {overflow} infinite, {} NaN",
+        nan.len()
+    );
     let mut known: Vec<String> = KNOWN_NAN.iter().map(|s| s.to_string()).collect();
     known.sort();
     nan.sort();
     assert_eq!(nan, known, "requests answering NaN (of {calls})");
-    // Results beyond a double: counted until the wire has a way to say so.
-    assert!(overflow < 70, "{overflow} infinite results");
+    // Results beyond a double are refused, not sent.
+    assert_eq!(
+        overflow, 0,
+        "{overflow} infinite results reached a response"
+    );
+    assert!(refused > 0, "the sweep reaches no result beyond a double");
+}
+
+#[test]
+fn a_result_beyond_a_double_is_refused_with_the_answer_it_names() {
+    let wide = json!({ "kind": "uniform", "min": -1e300, "max": 1e300 });
+    let (_, body) = call(
+        super::unumflow_distribution_moments,
+        &json!({ "distribution": wide }),
+    );
+    assert_eq!(body["code"], "result_overflow", "{body}");
+    assert_eq!(body["parameter"], "variance");
+
+    // A lognormal with a huge location: the variates overflow at some index.
+    let heavy = json!({ "kind": "lognormal", "mu": 700.0, "sigma": 30.0 });
+    let (_, body) = call(
+        super::unumflow_distribution_sample,
+        &json!({ "distribution": heavy, "n": 5, "seed": 3 }),
+    );
+    assert_eq!(body["code"], "result_overflow", "{body}");
+    assert_eq!(body["parameter"], "values");
+    assert!(body["index"].is_number());
+
+    // The same distribution at an ordinary location answers.
+    let (code, body) = call(
+        super::unumflow_distribution_moments,
+        &json!({ "distribution": { "kind": "uniform", "min": -1.0, "max": 1.0 } }),
+    );
+    assert_eq!(code, 0, "{body}");
 }

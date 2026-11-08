@@ -49,9 +49,10 @@ use serde_json::{json, Value};
 
 use crate::collections::IntervalSet;
 use crate::wire::{
-    check_finite, check_kind, check_probability, convert_units, distribution_refusal,
-    interval_set_from, sample_median, sample_quantiles, unit_at, units_from, whole, Code,
-    Distribution, DistributionSpec, Field, Refusal, UnitDefinitionSpec, UnitInfo,
+    all_within_range, check_finite, check_kind, check_probability, convert_units,
+    distribution_refusal, interval_set_from, sample_median, sample_quantiles, unit_at, units_from,
+    whole, within_range, Code, Distribution, DistributionSpec, Field, Refusal, UnitDefinitionSpec,
+    UnitInfo,
 };
 
 const ERR_NULL: i32 = -1;
@@ -343,8 +344,8 @@ export!(
         let r: DistOnly = parse(text)?;
         let d = distribution(r.distribution)?;
         out(&Moments {
-            mean: d.mean(),
-            variance: d.variance(),
+            mean: within_range("mean", d.mean()).map_err(refused)?,
+            variance: within_range("variance", d.variance()).map_err(refused)?,
         })
     }
 );
@@ -370,7 +371,7 @@ export!(
         let p = required("p", r.p)?;
         check_probability(p).map_err(refused)?;
         out(&Number {
-            value: d.quantile(p),
+            value: within_range("quantile", d.quantile(p)).map_err(refused)?,
         })
     }
 );
@@ -386,7 +387,7 @@ export!(
         let n = whole("n", r.n, u32::MAX as f64).map_err(refused)? as usize;
         let seed = whole("seed", r.seed, 9_007_199_254_740_992.0).map_err(refused)? as u64;
         out(&Numbers {
-            values: d.sample_n(n, seed),
+            values: all_within_range("values", d.sample_n(n, seed)).map_err(refused)?,
         })
     }
 );

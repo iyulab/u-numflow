@@ -45,9 +45,9 @@ use wasm_bindgen::prelude::*;
 
 use crate::transforms::TransformError;
 use crate::wire::{
-    check_finite, check_kind, check_probability, convert_units, distribution_refusal,
-    interval_set_from, sample_median, sample_quantiles, unit_at, units_from, whole, Bound, Code,
-    Field, Refusal, UnitDefinitionSpec, UnitInfo,
+    all_within_range, check_finite, check_kind, check_probability, convert_units,
+    distribution_refusal, interval_set_from, sample_median, sample_quantiles, unit_at, units_from,
+    whole, within_range, Bound, Code, Field, Refusal, UnitDefinitionSpec, UnitInfo,
 };
 
 /// One element of a JS number array, as found.
@@ -606,8 +606,8 @@ pub fn distribution_moments(
 ) -> Result<JsValue, JsValue> {
     let d = read_distribution(&distribution)?;
     let dto = MomentsDto {
-        mean: d.mean(),
-        variance: d.variance(),
+        mean: within_range("mean", d.mean())?,
+        variance: within_range("variance", d.variance())?,
     };
     Ok(serde_wasm_bindgen::to_value(&dto).map_err(|e| Refusal {
         code: Code::Internal,
@@ -648,7 +648,7 @@ pub fn distribution_quantile(
 ) -> Result<f64, JsValue> {
     let d = read_distribution(&distribution)?;
     check_probability(p)?;
-    Ok(d.quantile(p))
+    Ok(within_range("quantile", d.quantile(p))?)
 }
 
 /// `n` random variates, reproducible from `seed`: the same `(distribution, n,
@@ -669,7 +669,7 @@ pub fn distribution_sample(
     let d = read_distribution(&distribution)?;
     let n = whole("n", n, u32::MAX as f64)? as usize;
     let seed = whole("seed", seed, 9_007_199_254_740_992.0)? as u64;
-    Ok(d.sample_n(n, seed))
+    Ok(all_within_range("values", d.sample_n(n, seed))?)
 }
 
 // ── Interval sets ─────────────────────────────────────────────────────────
