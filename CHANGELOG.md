@@ -51,6 +51,11 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
   shape of about 1e7): the regularized lower gamma is right to 1e-9 (absolute) from 1e4 to 1e12, as the 0.16.1 notes
   said; the incomplete beta is right to 1e-9 below a shape of 1e7 and to 7e-9 where the normal limit takes over
   (`I_x(1e7, 1e7)`), falling as 1/(a+b) -- "about 1e-9 at any shape" was 7e-9 at its worst.
+- `Matrix::eigen_symmetric` took three times as long as its operation count says at 2,000 rows and up: the Householder
+  reduction ran its inner loops down the columns of a row-major matrix (a stride of `n`, all cache misses) and then
+  transposed the whole transform for the QL step. It stores the transform column by column now, so the loops are
+  contiguous and the transpose is gone: 2,049 rows 52.7 s to 27.4 s (1,000 rows 3.0 s to 2.9 s), the eigenvalues and
+  eigenvectors identical bit for bit.
 
 ## [0.16.1] - 2026-11-08
 

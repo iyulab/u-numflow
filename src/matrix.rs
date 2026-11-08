@@ -926,17 +926,10 @@ impl Matrix {
         let mut v: Vec<f64> = self.data.iter().map(|x| x / scale).collect();
         let mut d = vec![0.0; n];
         let mut e = vec![0.0; n];
+        // The transformation comes back one column per row of memory, which is
+        // what the QL rotations want: each acts on a pair of eigenvector columns.
         householder_tridiagonalise(&mut v, &mut d, &mut e, n);
-
-        // The QL rotations act on pairs of eigenvector columns: keep them as
-        // rows so each rotation walks contiguous memory.
-        let mut vt = vec![0.0; n * n];
-        for r in 0..n {
-            for c in 0..n {
-                vt[c * n + r] = v[r * n + c];
-            }
-        }
-        drop(v);
+        let mut vt = v;
         if !tridiagonal_ql(&mut vt, &mut d, &mut e, n) {
             return None;
         }
@@ -1027,12 +1020,19 @@ impl std::fmt::Display for Matrix {
 /// small matrices.
 const HOUSEHOLDER_MIN_ORDER: usize = 64;
 
-/// Householder reduction of the symmetric matrix `v` (row-major, `n × n`) to
-/// tridiagonal form (EISPACK `tred2`, after JAMA): on return `d` is the
-/// diagonal, `e[1..]` the subdiagonal (`e[0] = 0`) and `v` the orthogonal
-/// matrix of the transformation.
+/// Householder reduction of the symmetric matrix `v` (`n × n`) to tridiagonal
+/// form (EISPACK `tred2`, after JAMA): on return `d` is the diagonal, `e[1..]`
+/// the subdiagonal (`e[0] = 0`) and `v` the orthogonal matrix of the
+/// transformation.
+///
+/// `v` is stored **column by column** (element `(r, c)` at `c * n + r`): every
+/// inner loop of the algorithm runs down a column, which then is a contiguous
+/// stretch of memory instead of a stride of `n` -- at 2,000 rows the strided
+/// form took three times as long, all of it cache misses. The input is
+/// symmetric, so its layout does not matter, and the result is the transform
+/// with one column per row of memory, the form the QL step wants.
 fn householder_tridiagonalise(v: &mut [f64], d: &mut [f64], e: &mut [f64], n: usize) {
-    let at = |r: usize, c: usize| r * n + c;
+    let at = |r: usize, c: usize| c * n + r;
     for j in 0..n {
         d[j] = v[at(n - 1, j)];
     }
