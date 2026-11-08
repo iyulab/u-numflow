@@ -47,6 +47,10 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
   series (and `ln_1p` for the `1 + t²/df`), and the gamma and chi-squared densities use the saddle-point form
   `−D(a, z) + ½ ln a − ½ ln 2π − c(a)` with Loader's deviance term, so every one is right to 1e-12 against mpmath at
   shapes from 1e3 to 1e14. The noncentral t CDF's `ln B` term uses the same step.
+- Checked against the density integrated at 60 digits (mpmath; its own `gammainc` and `betainc` do not converge past a
+  shape of about 1e7): the regularized lower gamma is right to 1e-9 (absolute) from 1e4 to 1e12, as the 0.16.1 notes
+  said; the incomplete beta is right to 1e-9 below a shape of 1e7 and to 7e-9 where the normal limit takes over
+  (`I_x(1e7, 1e7)`), falling as 1/(a+b) -- "about 1e-9 at any shape" was 7e-9 at its worst.
 
 ## [0.16.1] - 2026-11-08
 
