@@ -340,6 +340,13 @@ pub fn regularized_incomplete_beta(x: f64, a: f64, b: f64) -> f64 {
         return 1.0;
     }
 
+    // Shapes this large: the prefix below is a difference of terms of order
+    // `a ln a`, which rounding leaves with no digit; the distribution is a
+    // normal one with a small skew.
+    if a.min(b) >= LARGE_SHAPE && a.max(b).is_finite() {
+        return beta_normal_approximation(x, a, b);
+    }
+
     // Use symmetry relation: I_x(a,b) = 1 - I_{1-x}(b,a)
     if x > (a + 1.0) / (a + b + 2.0) {
         return 1.0 - regularized_incomplete_beta(1.0 - x, b, a);
@@ -350,9 +357,48 @@ pub fn regularized_incomplete_beta(x: f64, a: f64, b: f64) -> f64 {
     (ln_prefix.exp() / a) * cf
 }
 
+/// The most terms a series or continued fraction is given for a shape: near the
+/// centre of the distribution they need a number proportional to `sqrt(shape)`
+/// to converge, which a fixed 200 gave out at a shape of about 1e4.
+fn iteration_limit(shape: f64) -> usize {
+    // The cap keeps a shape beyond a double's integers from asking for
+    // more terms than a loop can count.
+    200 + (12.0 * shape.sqrt()).min(100_000.0) as usize
+}
+
+/// From this shape on the incomplete beta and gamma functions are evaluated by
+/// their normal limit: below it the series and continued fractions lose at
+/// most `shape * 1e-16` to cancellation, above it that exceeds the `1/shape`
+/// error of the limit.
+const LARGE_SHAPE: f64 = 1e7;
+
+/// `I_x(a, b)` for large `a` and `b`: the normal approximation to the beta
+/// distribution with its first skewness term (Edgeworth),
+/// `Φ(z) − φ(z) · γ (z² − 1) / 6`, error `O(1/(a+b))`.
+fn beta_normal_approximation(x: f64, a: f64, b: f64) -> f64 {
+    // Work on the side where the mean is the small one, so `1 - mean` is not
+    // rounded to 1: I_x(a, b) = 1 - I_{1-x}(b, a).
+    if a > b {
+        return 1.0 - beta_normal_approximation(1.0 - x, b, a);
+    }
+    let total = a + b;
+    // z = (x - mean) / sd with mean = a/total, sd = sqrt(mean (1-mean) / (total+1)),
+    // written as the relative distance from the mean so that neither the mean
+    // nor the product `ab` underflows or overflows at shapes near 1e300.
+    let ratio = x * (1.0 + b / a);
+    let relative_sd = ((b / a) / (total + 1.0)).sqrt();
+    let z = (ratio - 1.0) / relative_sd;
+    if z.abs() > 40.0 {
+        return if z > 0.0 { 1.0 } else { 0.0 };
+    }
+    let skew = 2.0 * (b - a) * (total + 1.0).sqrt() / ((total + 2.0) * a.sqrt() * b.sqrt());
+    let density = (-0.5 * z * z).exp() / (2.0 * std::f64::consts::PI).sqrt();
+    (standard_normal_cdf(z) - density * skew * (z * z - 1.0) / 6.0).clamp(0.0, 1.0)
+}
+
 /// Continued fraction for the incomplete beta function (Lentz's algorithm).
 fn beta_cf(x: f64, a: f64, b: f64) -> f64 {
-    const MAX_ITER: usize = 200;
+    let max_iter = iteration_limit(a.max(b));
     const EPS: f64 = 1e-14;
     const TINY: f64 = 1e-30;
 
@@ -360,7 +406,7 @@ fn beta_cf(x: f64, a: f64, b: f64) -> f64 {
     let mut d = 1.0 / (1.0 - (a + b) * x / (a + 1.0)).max(TINY);
     let mut h = d;
 
-    for m in 1..=MAX_ITER {
+    for m in 1..=max_iter {
         let m_f = m as f64;
         let num_even = m_f * (b - m_f) * x / ((a + 2.0 * m_f - 1.0) * (a + 2.0 * m_f));
         d = 1.0 / (1.0 + num_even * d).max(TINY);
@@ -400,6 +446,12 @@ pub fn regularized_lower_gamma(a: f64, x: f64) -> f64 {
     if x <= 0.0 {
         return 0.0;
     }
+    if x == f64::INFINITY {
+        return 1.0;
+    }
+    if a >= LARGE_SHAPE {
+        return standard_normal_cdf(gamma_normal_score(a, x));
+    }
     if x < a + 1.0 {
         gamma_series(a, x)
     } else {
@@ -426,6 +478,9 @@ pub fn regularized_upper_gamma(a: f64, x: f64) -> f64 {
     if x == f64::INFINITY {
         return 0.0;
     }
+    if a >= LARGE_SHAPE {
+        return standard_normal_cdf(-gamma_normal_score(a, x));
+    }
     if x < a + 1.0 {
         1.0 - gamma_series(a, x)
     } else {
@@ -433,12 +488,19 @@ pub fn regularized_upper_gamma(a: f64, x: f64) -> f64 {
     }
 }
 
+/// The standard normal score of `x` for a gamma variate of shape `a` (Wilson &
+/// Hilferty 1931): `P(a, x) ≈ Φ(z)`, `z = 3 sqrt(a) ((x/a)^(1/3) − 1 + 1/(9a))`,
+/// with error `O(1/a)` -- used where `a` is too large for the series.
+fn gamma_normal_score(a: f64, x: f64) -> f64 {
+    3.0 * a.sqrt() * ((x / a).cbrt() - 1.0 + 1.0 / (9.0 * a))
+}
+
 /// Series expansion for the regularized lower incomplete gamma.
 fn gamma_series(a: f64, x: f64) -> f64 {
     let mut term = 1.0 / a;
     let mut sum = term;
     let mut ap = a;
-    for _ in 0..200 {
+    for _ in 0..iteration_limit(a) {
         ap += 1.0;
         term *= x / ap;
         sum += term;
@@ -455,7 +517,7 @@ fn gamma_cf(a: f64, x: f64) -> f64 {
     let mut c = 1.0 / 1e-30;
     let mut d = 1.0 / b;
     let mut h = d;
-    for i in 1..=200 {
+    for i in 1..=iteration_limit(a) {
         let an = -(i as f64) * (i as f64 - a);
         b += 2.0;
         d = an * d + b;
@@ -2128,5 +2190,47 @@ mod scipy_tail_reference {
         assert_eq!(chi_squared_sf(f64::INFINITY, 2.0), 0.0);
         assert_eq!(f_distribution_sf(f64::INFINITY, 2.0, 3.0), 0.0);
         assert_eq!(t_distribution_sf(f64::INFINITY, 4.0), 0.0);
+    }
+
+    #[test]
+    fn the_normal_limits_of_the_incomplete_beta_and_gamma_match_the_exact_functions_at_large_shapes(
+    ) {
+        // At shapes 1e6 and 1e7 the exact functions still hold their digits and
+        // the limits are within their O(1/shape) error.
+        for (a, b) in [(1e6_f64, 1e6_f64), (1e6, 3e6), (2e7, 1e7)] {
+            let mean = a / (a + b);
+            let sd = (mean * (1.0 - mean) / (a + b + 1.0)).sqrt();
+            for k in [-3.0, -1.0, -0.2, 0.0, 0.7, 2.0] {
+                let x = mean + k * sd;
+                let exact = regularized_incomplete_beta(x, a, b);
+                let limit = beta_normal_approximation(x, a, b);
+                assert!(
+                    (exact - limit).abs() < 2e-5,
+                    "beta({a},{b}) at {k} sd: {exact} vs {limit}"
+                );
+            }
+        }
+        for a in [1e6_f64, 1e7] {
+            for k in [-3.0, -1.0, 0.0, 1.0, 2.5] {
+                let x = a + k * a.sqrt();
+                let exact = regularized_lower_gamma(a, x);
+                let limit = standard_normal_cdf(gamma_normal_score(a, x));
+                assert!(
+                    (exact - limit).abs() < 2e-4,
+                    "gamma({a}) at {k} sd: {exact} vs {limit}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn the_incomplete_beta_and_gamma_answer_at_shapes_near_1e300() {
+        assert!((regularized_incomplete_beta(0.5, 1e300, 1e300) - 0.5).abs() < 1e-12);
+        assert_eq!(regularized_incomplete_beta(0.4, 1e300, 1e300), 0.0);
+        assert_eq!(regularized_incomplete_beta(0.6, 1e300, 1e300), 1.0);
+        assert!((regularized_lower_gamma(1e300, 1e300) - 0.5).abs() < 1e-9);
+        assert!((regularized_lower_gamma(1e300, 1.0) - 0.0).abs() < 1e-12);
+        assert!((regularized_upper_gamma(1e300, 1e300) - 0.5).abs() < 1e-9);
+        assert_eq!(regularized_lower_gamma(1e300, f64::INFINITY), 1.0);
     }
 }

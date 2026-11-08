@@ -8,6 +8,16 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ## [Unreleased]
 
+### Fixed
+
+- The regularized incomplete beta and gamma functions (every beta, gamma and chi-squared CDF, and the F and
+  t p-values built on them) lost their digits as a shape grew: a fixed 200-term limit gave out near a shape of
+  1e4 (`P(1e4, 1e4 − 1/3)` was 0.477, not 0.5; `P(1e6, ·)` was 0.08), and `I_0.5(1e8, 1e8)` was 1.306. The term limit
+  now grows with the square root of the shape, and from a shape of 1e7 the normal limit is used (Wilson-Hilferty
+  for the gamma, the first Edgeworth term for the beta), so the functions are right to about 1e-9 at any shape.
+  A beta CDF with both shapes near 1e300 answered infinity, and a gamma or chi-squared CDF with a shape near 1e300
+  answered NaN; they answer now.
+
 ## [0.16.1] - 2026-11-08
 
 ### Changed
