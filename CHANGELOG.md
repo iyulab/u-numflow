@@ -8,6 +8,14 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ## [Unreleased]
 
+### Changed
+
+- `Matrix::eigen_symmetric` of a matrix with 64 or more rows reduces it to tridiagonal form by Householder
+  reflections and finds the eigensystem by implicit QL, instead of cyclic Jacobi rotations (several sweeps of n³):
+  800 rows take 2.2 s (about 20 s before), 2,049 rows a minute. Smaller matrices keep Jacobi, and its signs. An
+  eigenvector's sign is not defined and may differ between the two; eigenvalues, orthonormality and the
+  decomposition `A v = λ v` hold to the same tolerance at any scale.
+
 ### Fixed
 
 - Distributions at the ends of their parameter range answered NaN or infinity where the value is an ordinary

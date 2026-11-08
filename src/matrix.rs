@@ -658,8 +658,9 @@ impl Matrix {
         solve_upper_triangular(&lt, &y)
     }
 
-    /// Eigenvalue decomposition of a real symmetric matrix using the
-    /// classical Jacobi rotation algorithm.
+    /// Eigenvalue decomposition of a real symmetric matrix: the classical
+    /// Jacobi rotation algorithm below 64 rows, Householder
+    /// tridiagonalisation and implicit QL from there on.
     ///
     /// Returns `(eigenvalues, eigenvectors)` where eigenvalues are sorted
     /// in **descending** order and eigenvectors are the corresponding columns
@@ -668,13 +669,21 @@ impl Matrix {
     /// # Algorithm
     ///
     /// Cyclic Jacobi rotations zero off-diagonal elements iteratively.
-    /// Converges quadratically for symmetric matrices.
+    /// Converges quadratically for symmetric matrices, and finds small
+    /// eigenvalues to high relative accuracy.
     ///
-    /// Reference: Golub & Van Loan (1996), "Matrix Computations", §8.4
+    /// From 64 rows the matrix is reduced to
+    /// tridiagonal form by Householder reflections and its eigensystem found
+    /// by the implicit QL algorithm (EISPACK `tred2` / `tql2`), a few times
+    /// the work of one Jacobi sweep in all. An eigenvector's sign is not
+    /// defined: the two algorithms may return opposite signs.
+    ///
+    /// Reference: Golub & Van Loan (1996), "Matrix Computations", §8.3–8.4
     ///
     /// # Complexity
     ///
-    /// O(n³) per sweep, typically 5–10 sweeps. Best for n < 200.
+    /// Jacobi: O(n³) per sweep, typically 5–10 sweeps. Householder + QL: O(n³)
+    /// in all (about 4n³/3 for the reduction, 3n³ with the eigenvectors).
     ///
     /// # Errors
     ///
@@ -712,6 +721,14 @@ impl Matrix {
         let sym_tol = 1e-10 * self.frobenius_norm();
         if !self.is_symmetric(sym_tol) {
             return Err(MatrixError::NotSymmetric);
+        }
+
+        if n >= HOUSEHOLDER_MIN_ORDER {
+            if let Some(result) = self.eigen_symmetric_householder() {
+                return Ok(result);
+            }
+            // QL did not converge (not seen on a finite symmetric matrix):
+            // Jacobi below always finishes.
         }
 
         // Work on a mutable copy of the matrix
@@ -851,6 +868,59 @@ impl Matrix {
 
         Ok((eigenvalues, eigenvectors))
     }
+
+    /// Eigensystem of a symmetric matrix by Householder tridiagonalisation and
+    /// the implicit QL algorithm; `None` if QL does not converge or the matrix
+    /// holds a non-finite entry. Eigenvalues descending, eigenvectors as columns.
+    fn eigen_symmetric_householder(&self) -> Option<(Vec<f64>, Matrix)> {
+        let n = self.rows;
+        if self.data.iter().any(|v| !v.is_finite()) {
+            return None;
+        }
+        // Work on the matrix divided by its largest entry, so nothing over- or
+        // underflows at any scale (a sum of squares would); the eigenvalues are
+        // multiplied back.
+        let scale = self.data.iter().fold(0.0_f64, |m, x| m.max(x.abs()));
+        if scale == 0.0 {
+            return Some((vec![0.0; n], Matrix::identity(n)));
+        }
+        let mut v: Vec<f64> = self.data.iter().map(|x| x / scale).collect();
+        let mut d = vec![0.0; n];
+        let mut e = vec![0.0; n];
+        householder_tridiagonalise(&mut v, &mut d, &mut e, n);
+
+        // The QL rotations act on pairs of eigenvector columns: keep them as
+        // rows so each rotation walks contiguous memory.
+        let mut vt = vec![0.0; n * n];
+        for r in 0..n {
+            for c in 0..n {
+                vt[c * n + r] = v[r * n + c];
+            }
+        }
+        drop(v);
+        if !tridiagonal_ql(&mut vt, &mut d, &mut e, n) {
+            return None;
+        }
+
+        let mut order: Vec<usize> = (0..n).collect();
+        order.sort_by(|&a, &b| d[b].partial_cmp(&d[a]).unwrap_or(std::cmp::Ordering::Equal));
+        let eigenvalues: Vec<f64> = order.iter().map(|&i| d[i] * scale).collect();
+        let mut data = vec![0.0; n * n];
+        for (col, &i) in order.iter().enumerate() {
+            let row_i = &vt[i * n..(i + 1) * n];
+            for (row, &x) in row_i.iter().enumerate() {
+                data[row * n + col] = x;
+            }
+        }
+        Some((
+            eigenvalues,
+            Matrix {
+                data,
+                rows: n,
+                cols: n,
+            },
+        ))
+    }
 }
 
 /// Solves L·x = b where L is lower-triangular (forward substitution).
@@ -912,6 +982,209 @@ impl std::fmt::Display for Matrix {
 // ============================================================================
 // Tests
 // ============================================================================
+
+/// Order (rows) from which [`Matrix::eigen_symmetric`] reduces to tridiagonal form
+/// instead of rotating: Jacobi costs several sweeps of `n³` and is best for
+/// small matrices.
+const HOUSEHOLDER_MIN_ORDER: usize = 64;
+
+/// Householder reduction of the symmetric matrix `v` (row-major, `n × n`) to
+/// tridiagonal form (EISPACK `tred2`, after JAMA): on return `d` is the
+/// diagonal, `e[1..]` the subdiagonal (`e[0] = 0`) and `v` the orthogonal
+/// matrix of the transformation.
+fn householder_tridiagonalise(v: &mut [f64], d: &mut [f64], e: &mut [f64], n: usize) {
+    let at = |r: usize, c: usize| r * n + c;
+    for j in 0..n {
+        d[j] = v[at(n - 1, j)];
+    }
+    for i in (1..n).rev() {
+        // Scale to avoid under/overflow.
+        let mut scale = 0.0;
+        let mut h = 0.0;
+        for dk in d.iter().take(i) {
+            scale += dk.abs();
+        }
+        if scale == 0.0 {
+            e[i] = d[i - 1];
+            for j in 0..i {
+                d[j] = v[at(i - 1, j)];
+                v[at(i, j)] = 0.0;
+                v[at(j, i)] = 0.0;
+            }
+        } else {
+            // Generate the Householder vector.
+            for dk in d.iter_mut().take(i) {
+                *dk /= scale;
+                h += *dk * *dk;
+            }
+            let mut f = d[i - 1];
+            let mut g = h.sqrt();
+            if f > 0.0 {
+                g = -g;
+            }
+            e[i] = scale * g;
+            h -= f * g;
+            d[i - 1] = f - g;
+            for ej in e.iter_mut().take(i) {
+                *ej = 0.0;
+            }
+            // Apply the similarity transformation to the remaining columns.
+            for j in 0..i {
+                f = d[j];
+                v[at(j, i)] = f;
+                g = e[j] + v[at(j, j)] * f;
+                for k in (j + 1)..i {
+                    g += v[at(k, j)] * d[k];
+                    e[k] += v[at(k, j)] * f;
+                }
+                e[j] = g;
+            }
+            f = 0.0;
+            for j in 0..i {
+                e[j] /= h;
+                f += e[j] * d[j];
+            }
+            let hh = f / (h + h);
+            for j in 0..i {
+                e[j] -= hh * d[j];
+            }
+            for j in 0..i {
+                f = d[j];
+                g = e[j];
+                for k in j..i {
+                    v[at(k, j)] -= f * e[k] + g * d[k];
+                }
+                d[j] = v[at(i - 1, j)];
+                v[at(i, j)] = 0.0;
+            }
+        }
+        d[i] = h;
+    }
+    // Accumulate the transformations.
+    for i in 0..n - 1 {
+        v[at(n - 1, i)] = v[at(i, i)];
+        v[at(i, i)] = 1.0;
+        let h = d[i + 1];
+        if h != 0.0 {
+            for k in 0..=i {
+                d[k] = v[at(k, i + 1)] / h;
+            }
+            for j in 0..=i {
+                let mut g = 0.0;
+                for k in 0..=i {
+                    g += v[at(k, i + 1)] * v[at(k, j)];
+                }
+                for k in 0..=i {
+                    v[at(k, j)] -= g * d[k];
+                }
+            }
+        }
+        for k in 0..=i {
+            v[at(k, i + 1)] = 0.0;
+        }
+    }
+    for j in 0..n {
+        d[j] = v[at(n - 1, j)];
+        v[at(n - 1, j)] = 0.0;
+    }
+    v[at(n - 1, n - 1)] = 1.0;
+    e[0] = 0.0;
+}
+
+/// Implicit QL on the tridiagonal matrix (`d` diagonal, `e[1..]` subdiagonal)
+/// with the eigenvectors accumulated in `vt`, **one eigenvector per row**
+/// (EISPACK `tql2`, after JAMA). On return `d` holds the eigenvalues
+/// (unsorted) and row `i` of `vt` the eigenvector of `d[i]`. `false` if an
+/// eigenvalue needs more than 60 iterations.
+fn tridiagonal_ql(vt: &mut [f64], d: &mut [f64], e: &mut [f64], n: usize) -> bool {
+    for i in 1..n {
+        e[i - 1] = e[i];
+    }
+    e[n - 1] = 0.0;
+
+    let mut f = 0.0;
+    let mut tst1: f64 = 0.0;
+    let eps = f64::EPSILON;
+    for l in 0..n {
+        // Find a small subdiagonal element.
+        tst1 = tst1.max(d[l].abs() + e[l].abs());
+        let mut m = l;
+        while m < n - 1 {
+            if e[m].abs() <= eps * tst1 {
+                break;
+            }
+            m += 1;
+        }
+        // m == l: d[l] is an eigenvalue. Otherwise iterate.
+        if m > l {
+            let mut iterations = 0;
+            loop {
+                iterations += 1;
+                if iterations > 60 {
+                    return false;
+                }
+                // Compute the implicit shift.
+                let g = d[l];
+                let mut p = (d[l + 1] - g) / (2.0 * e[l]);
+                let mut r = p.hypot(1.0);
+                if p < 0.0 {
+                    r = -r;
+                }
+                d[l] = e[l] / (p + r);
+                d[l + 1] = e[l] * (p + r);
+                let dl1 = d[l + 1];
+                let mut h = g - d[l];
+                for di in d.iter_mut().take(n).skip(l + 2) {
+                    *di -= h;
+                }
+                f += h;
+
+                // Implicit QL transformation.
+                p = d[m];
+                let mut c = 1.0;
+                let mut c2 = c;
+                let mut c3 = c;
+                let el1 = e[l + 1];
+                let mut s = 0.0;
+                let mut s2 = 0.0;
+                for i in (l..m).rev() {
+                    c3 = c2;
+                    c2 = c;
+                    s2 = s;
+                    let g = c * e[i];
+                    h = c * p;
+                    r = p.hypot(e[i]);
+                    e[i + 1] = s * r;
+                    s = e[i] / r;
+                    c = p / r;
+                    p = c * d[i] - s * g;
+                    d[i + 1] = h + s * (c * g + s * d[i]);
+
+                    // Accumulate the rotation in the eigenvector rows i, i+1.
+                    let (lo, hi) = vt.split_at_mut((i + 1) * n);
+                    let row_i = &mut lo[i * n..];
+                    let row_i1 = &mut hi[..n];
+                    for (a, b) in row_i.iter_mut().zip(row_i1.iter_mut()) {
+                        let hv = *b;
+                        *b = s * *a + c * hv;
+                        *a = c * *a - s * hv;
+                    }
+                }
+                p = -s * s2 * c3 * el1 * e[l] / dl1;
+                e[l] = s * p;
+                d[l] = c * p;
+
+                // Converged when the subdiagonal element is negligible.
+                if e[l].abs() <= eps * tst1 {
+                    break;
+                }
+            }
+        }
+        d[l] += f;
+        e[l] = 0.0;
+    }
+    true
+}
 
 #[cfg(test)]
 mod tests {
@@ -1402,5 +1675,131 @@ mod proptests {
             .expect("symmetric");
         assert_eq!(zeros, vec![0.0, 0.0]);
         assert_eq!(vectors.get(0, 0), 1.0);
+    }
+
+    // ── Householder + QL (from HOUSEHOLDER_MIN_ORDER rows) ─────────────
+
+    /// Deterministic symmetric matrix of order `n`.
+    fn symmetric(n: usize, seed: u64) -> Matrix {
+        let mut state = seed;
+        let mut next = || {
+            state = state
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            ((state >> 11) as f64 / (1u64 << 53) as f64) - 0.5
+        };
+        let mut data = vec![0.0; n * n];
+        for i in 0..n {
+            for j in i..n {
+                let x = next();
+                data[i * n + j] = x;
+                data[j * n + i] = x;
+            }
+        }
+        Matrix::new(n, n, data).expect("square")
+    }
+
+    /// `max |A v_k − λ_k v_k|` and `max |VᵀV − I|`.
+    fn eigen_residuals(a: &Matrix, values: &[f64], vectors: &Matrix) -> (f64, f64) {
+        let n = a.rows();
+        let mut residual: f64 = 0.0;
+        for (k, &lambda) in values.iter().enumerate() {
+            let v: Vec<f64> = (0..n).map(|r| vectors.get(r, k)).collect();
+            let av = a.mul_vec(&v).expect("dims");
+            for (r, &x) in v.iter().enumerate() {
+                residual = residual.max((av[r] - lambda * x).abs());
+            }
+        }
+        let mut orthonormal: f64 = 0.0;
+        for i in 0..n {
+            for j in i..n {
+                let dot: f64 = (0..n).map(|r| vectors.get(r, i) * vectors.get(r, j)).sum();
+                let want = if i == j { 1.0 } else { 0.0 };
+                orthonormal = orthonormal.max((dot - want).abs());
+            }
+        }
+        (residual, orthonormal)
+    }
+
+    #[test]
+    fn eigen_symmetric_at_the_householder_order_matches_the_known_spectrum() {
+        // The second-difference matrix (2 on the diagonal, -1 beside it) has
+        // eigenvalues 2 - 2cos(kπ/(n+1)).
+        for n in [HOUSEHOLDER_MIN_ORDER, 100] {
+            let mut data = vec![0.0; n * n];
+            for i in 0..n {
+                data[i * n + i] = 2.0;
+                if i + 1 < n {
+                    data[i * n + i + 1] = -1.0;
+                    data[(i + 1) * n + i] = -1.0;
+                }
+            }
+            let a = Matrix::new(n, n, data).expect("square");
+            let (values, vectors) = a.eigen_symmetric().expect("symmetric");
+            for (k, &got) in values.iter().enumerate() {
+                // Descending: the largest is k = n.
+                let order = (n - k) as f64;
+                let want = 2.0 - 2.0 * (order * std::f64::consts::PI / (n as f64 + 1.0)).cos();
+                assert!((got - want).abs() < 1e-12, "n {n} k {k}: {got} vs {want}");
+            }
+            let (residual, orthonormal) = eigen_residuals(&a, &values, &vectors);
+            assert!(residual < 1e-12, "residual {residual}");
+            assert!(orthonormal < 1e-12, "orthonormal {orthonormal}");
+        }
+    }
+
+    #[test]
+    fn eigen_symmetric_of_a_dense_matrix_reconstructs_it() {
+        for (n, seed) in [(64, 1), (97, 2), (150, 3)] {
+            let a = symmetric(n, seed);
+            let (values, vectors) = a.eigen_symmetric().expect("symmetric");
+            assert!(values.windows(2).all(|w| w[0] >= w[1]), "descending");
+            let trace: f64 = (0..n).map(|i| a.get(i, i)).sum();
+            assert!((values.iter().sum::<f64>() - trace).abs() < 1e-10);
+            let (residual, orthonormal) = eigen_residuals(&a, &values, &vectors);
+            assert!(residual < 1e-11, "n {n}: residual {residual}");
+            assert!(orthonormal < 1e-11, "n {n}: orthonormal {orthonormal}");
+        }
+    }
+
+    #[test]
+    fn eigen_symmetric_householder_handles_repeated_and_zero_eigenvalues() {
+        let n = HOUSEHOLDER_MIN_ORDER + 6;
+        let (values, vectors) = Matrix::identity(n).eigen_symmetric().expect("symmetric");
+        assert!(values.iter().all(|&x| (x - 1.0).abs() < 1e-14));
+        let (_, orthonormal) = eigen_residuals(&Matrix::identity(n), &values, &vectors);
+        assert!(orthonormal < 1e-12);
+
+        // A correlation-like matrix with two identical variables: one eigenvalue is 0.
+        let mut a = symmetric(n, 9);
+        for i in 0..n {
+            a.set(n - 1, i, a.get(n - 2, i));
+            a.set(i, n - 1, a.get(i, n - 2));
+        }
+        let gram = a.transpose().mul_mat(&a).expect("dims");
+        let (values, vectors) = gram.eigen_symmetric().expect("symmetric");
+        assert!(values.last().copied().unwrap_or(1.0).abs() < 1e-9 * values[0]);
+        let (residual, _) = eigen_residuals(&gram, &values, &vectors);
+        assert!(residual < 1e-9 * values[0].max(1.0), "residual {residual}");
+    }
+
+    #[test]
+    fn eigen_symmetric_householder_does_not_depend_on_the_scale() {
+        let n = HOUSEHOLDER_MIN_ORDER + 3;
+        let base = symmetric(n, 5);
+        let (want, _) = base.eigen_symmetric().expect("symmetric");
+        for scale in [1e-200, 1e-150, 1e150, 1e200] {
+            let scaled = base.scale(scale);
+            let (got, vectors) = scaled.eigen_symmetric().expect("symmetric");
+            for (g, w) in got.iter().zip(&want) {
+                assert!((g / scale - w).abs() < 1e-11, "scale {scale}: {g} vs {w}");
+            }
+            let (_, orthonormal) = eigen_residuals(
+                &base,
+                &got.iter().map(|g| g / scale).collect::<Vec<_>>(),
+                &vectors,
+            );
+            assert!(orthonormal < 1e-11);
+        }
     }
 }
