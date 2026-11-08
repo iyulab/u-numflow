@@ -30,6 +30,17 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
   for the gamma, the first Edgeworth term for the beta), so the functions are right to about 1e-9 at any shape.
   A beta CDF with both shapes near 1e300 answered infinity, and a gamma or chi-squared CDF with a shape near 1e300
   answered NaN; they answer now.
+- The regularized incomplete beta function lost its digits when one shape was large and the other small -- the
+  Student t and F p-values at large degrees of freedom: `I_x(1e14, 1)` was off by a third (`x^a` is the answer),
+  and at a shape of 1e8 the error was 1e-7. Four causes: `ln_beta` was `ln Γ(a) + ln Γ(b) − ln Γ(a+b)`, three
+  numbers of order `a ln a` whose rounding leaves the sum, of order `b ln a`, with no digit; it now subtracts
+  the Stirling series of the large terms first (`ln_1p` of a ratio) and is right to 1e-13 at any size, also for
+  `a = 1e300`. The prefix took `ln(1 − x)` of a rounded `1 − x` (an `x` of 5e-16 lost a tenth of itself, which a
+  shape of 1e14 multiplies); and the symmetry relation `I_x(a,b) = 1 − I_{1−x}(b,a)` rounded `1 − x` the same
+  way, so the function now carries `x` and `1 − x` side by side and takes logarithms of the exact one; the
+  continued fraction's first term subtracted two numbers equal to the digits of `1 − x` and now uses the
+  exact side. Checked against the closed forms `I_x(a, 1) = x^a` and `I_x(1, b) = 1 − (1−x)^b` for shapes
+  from 1e2 to 1e14 (relative error under 1e-9).
 
 ## [0.16.1] - 2026-11-08
 

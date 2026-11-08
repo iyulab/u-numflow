@@ -299,7 +299,51 @@ pub fn gamma(x: f64) -> f64 {
 /// assert!(ln_beta(1.0, 1.0).abs() < 1e-10);
 /// ```
 pub fn ln_beta(a: f64, b: f64) -> f64 {
+    let (p, q) = if a < b { (a, b) } else { (b, a) };
+    if p > 0.0 && q >= STIRLING_FROM && q.is_finite() {
+        return ln_beta_large(p, q);
+    }
     ln_gamma(a) + ln_gamma(b) - ln_gamma(a + b)
+}
+
+/// From this argument on `ln Γ` is its Stirling series to a double's last digit.
+const STIRLING_FROM: f64 = 10.0;
+
+/// `ln Γ(z) − [(z − ½) ln z − z + ½ ln 2π]` for `z >= 10`: the tail of the
+/// Stirling series, `1/(12z) − 1/(360z³) + 1/(1260z⁵) − …`, each term smaller
+/// than the last by `1/z²`, the first one left out under 1e-16 of the sum.
+fn stirling_correction(z: f64) -> f64 {
+    let w = 1.0 / (z * z);
+    (1.0 / 12.0
+        + w * (-1.0 / 360.0
+            + w * (1.0 / 1260.0
+                + w * (-1.0 / 1680.0
+                    + w * (1.0 / 1188.0 + w * (-691.0 / 360_360.0 + w * (1.0 / 156.0)))))))
+        / z
+}
+
+/// `ln B(p, q)` for `0 < p <= q` and `q >= 10`, without the cancellation of
+/// `ln Γ(p) + ln Γ(q) − ln Γ(p + q)`: the three terms are of order `q ln q`, so
+/// when `q` is large next to `p` their rounding (a `q` of 1e10 has a `ln Γ` whose
+/// last digit is 3e-5) leaves the sum, which is of order `p ln q`, with no digit
+/// at all. Here the terms that cancel are subtracted before they are added up:
+/// the Stirling series of the large ones differ by `ln_1p` of a ratio, which
+/// keeps its digits at any size.
+fn ln_beta_large(p: f64, q: f64) -> f64 {
+    let sum = p + q;
+    let half_ln_two_pi = 0.5 * (2.0 * std::f64::consts::PI).ln();
+    if p >= STIRLING_FROM {
+        // All three by Stirling: (p-½)ln p + (q-½)ln q − (p+q-½)ln(p+q)
+        //   = −(p-½) ln(1 + q/p) − q ln(1 + p/q) − ½ ln q.
+        return half_ln_two_pi - (p - 0.5) * (q / p).ln_1p() - q * (p / q).ln_1p() - 0.5 * q.ln()
+            + stirling_correction(p)
+            + stirling_correction(q)
+            - stirling_correction(sum);
+    }
+    // ln Γ(p) exactly, and ln Γ(q) − ln Γ(p+q) by Stirling:
+    //   = −(q-½) ln(1 + p/q) − p ln(p+q) + p + c(q) − c(p+q).
+    ln_gamma(p) - (q - 0.5) * (p / q).ln_1p() - p * sum.ln() + p + stirling_correction(q)
+        - stirling_correction(sum)
 }
 
 // ============================================================================
@@ -347,13 +391,29 @@ pub fn regularized_incomplete_beta(x: f64, a: f64, b: f64) -> f64 {
         return beta_normal_approximation(x, a, b);
     }
 
+    incomplete_beta_with_complement(x, 1.0 - x, a, b)
+}
+
+/// `I_x(a, b)` given `x` and its complement `y = 1 - x` separately.
+///
+/// The symmetry relation `I_x(a, b) = 1 - I_y(b, a)` swaps the two, and `1 - x`
+/// is rounded: for an `x` near 1 the `y` computed from it has lost `x`'s
+/// digits (an `x` of 1 - 2.5e-14 differs from the nearest double to it by up to
+/// 0.4 % of `y`), which a shape of 1e14 turns into an error in the answer. The
+/// `x` and `y` handed down from the caller are exact, so the side that has to be
+/// subtracted from 1 is never computed that way.
+fn incomplete_beta_with_complement(x: f64, y: f64, a: f64, b: f64) -> f64 {
     // Use symmetry relation: I_x(a,b) = 1 - I_{1-x}(b,a)
     if x > (a + 1.0) / (a + b + 2.0) {
-        return 1.0 - regularized_incomplete_beta(1.0 - x, b, a);
+        return 1.0 - incomplete_beta_with_complement(y, x, b, a);
     }
 
-    let ln_prefix = a * x.ln() + b * (1.0 - x).ln() - ln_beta(a, b);
-    let cf = beta_cf(x, a, b);
+    // The logarithm of whichever of the pair is near 1 from the other one:
+    // ln(1 - y) = ln_1p(-y) keeps digits that ln(x) of a rounded x does not.
+    let ln_x = if x < 0.5 { x.ln() } else { (-y).ln_1p() };
+    let ln_y = if y < 0.5 { y.ln() } else { (-x).ln_1p() };
+    let ln_prefix = a * ln_x + b * ln_y - ln_beta(a, b);
+    let cf = beta_cf(x, y, a, b);
     (ln_prefix.exp() / a) * cf
 }
 
@@ -396,14 +456,24 @@ fn beta_normal_approximation(x: f64, a: f64, b: f64) -> f64 {
     (standard_normal_cdf(z) - density * skew * (z * z - 1.0) / 6.0).clamp(0.0, 1.0)
 }
 
-/// Continued fraction for the incomplete beta function (Lentz's algorithm).
-fn beta_cf(x: f64, a: f64, b: f64) -> f64 {
+/// Continued fraction for the incomplete beta function (Lentz's algorithm);
+/// `y` is `1 - x`, passed on exactly (see [`incomplete_beta_with_complement`]).
+fn beta_cf(x: f64, y: f64, a: f64, b: f64) -> f64 {
     let max_iter = iteration_limit(a.max(b));
     const EPS: f64 = 1e-14;
     const TINY: f64 = 1e-30;
 
     let mut c = 1.0;
-    let mut d = 1.0 / (1.0 - (a + b) * x / (a + 1.0)).max(TINY);
+    // 1 - (a+b)x/(a+1) = ((a+b) y + 1 - b) / (a+1). Of the two the exact one is
+    // used: `x` when it is the small one (then `y = 1 - x` was rounded), `y`
+    // otherwise -- for an `x` near 1 the first form subtracts two numbers that
+    // agree to the digits of `y`, which are all there are.
+    let first = if x < 0.5 {
+        1.0 - (a + b) * x / (a + 1.0)
+    } else {
+        ((a + b) * y + (1.0 - b)) / (a + 1.0)
+    };
+    let mut d = 1.0 / first.max(TINY);
     let mut h = d;
 
     for m in 1..=max_iter {
@@ -2232,5 +2302,66 @@ mod scipy_tail_reference {
         assert!((regularized_lower_gamma(1e300, 1.0) - 0.0).abs() < 1e-12);
         assert!((regularized_upper_gamma(1e300, 1e300) - 0.5).abs() < 1e-9);
         assert_eq!(regularized_lower_gamma(1e300, f64::INFINITY), 1.0);
+    }
+
+    /// With one shape equal to 1 the incomplete beta has a closed form --
+    /// `I_x(a, 1) = x^a` and `I_x(1, b) = 1 - (1-x)^b` -- which holds at any other
+    /// shape however large: the oracle for a shape that is large on one side only
+    /// (the normal limit needs both). The arguments are doubles, and the oracle
+    /// is computed from those exact values (`ln_1p(x - 1)` for the first, with
+    /// `x - 1` exact, `exp_m1` for the second), so it carries no rounding of its own.
+    #[test]
+    fn the_incomplete_beta_with_one_shape_one_matches_its_closed_form() {
+        let mut worst = (0.0_f64, String::new());
+        for big in [1e2_f64, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9, 1e10, 1e12, 1e14] {
+            for c in [1e-3, 0.05, 0.3, 1.0, 2.5, 8.0] {
+                // x = 1 - c/a: the point where x^a = exp(-c) -- the body of the law.
+                let x = 1.0 - c / big;
+                let want = (big * (x - 1.0).ln_1p()).exp();
+                let got = regularized_incomplete_beta(x, big, 1.0);
+                let rel = (got - want).abs() / want;
+                if rel > worst.0 {
+                    worst = (rel, format!("I_{x}({big}, 1) = {got}, want {want}"));
+                }
+                // x = c/b: the point where (1-x)^b = exp(-c).
+                let x = c / big;
+                let want = -(big * (-x).ln_1p()).exp_m1();
+                let got = regularized_incomplete_beta(x, 1.0, big);
+                let rel = (got - want).abs() / want;
+                if rel > worst.0 {
+                    worst = (rel, format!("I_{x}(1, {big}) = {got}, want {want}"));
+                }
+            }
+        }
+        assert!(
+            worst.0 < 1e-9,
+            "worst relative error {:e}: {}",
+            worst.0,
+            worst.1
+        );
+    }
+
+    /// `ln B(a, 1) = -ln a` and `ln B(a, 2) = -ln(a (a + 1))` at any `a`: the
+    /// log-beta of one large shape is small, and `ln Γ(a) − ln Γ(a + 1)` of two
+    /// large numbers is not the way to get it.
+    #[test]
+    fn ln_beta_with_a_small_shape_holds_its_digits_at_a_large_one() {
+        for a in [10.0_f64, 1e3, 1e6, 1e9, 1e12, 1e15, 1e100, 1e300] {
+            let one = ln_beta(a, 1.0);
+            assert!((one + a.ln()).abs() < 1e-13 * a.ln(), "B({a}, 1): {one}");
+            assert_eq!(one, ln_beta(1.0, a), "symmetric at {a}");
+            let two = ln_beta(2.0, a);
+            let want = -(a.ln() + (a + 1.0).ln());
+            assert!((two - want).abs() < 1e-13 * want.abs(), "B(2, {a}): {two}");
+        }
+        // Both large: the three Stirling terms agree with the direct sum where
+        // the direct sum still has its digits.
+        for (a, b) in [(10.0_f64, 10.0_f64), (30.0, 700.0), (1e3, 2e3)] {
+            let direct = ln_gamma(a) + ln_gamma(b) - ln_gamma(a + b);
+            assert!(
+                (ln_beta(a, b) - direct).abs() < 1e-12 * direct.abs(),
+                "B({a}, {b})"
+            );
+        }
     }
 }
