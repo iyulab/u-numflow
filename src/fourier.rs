@@ -180,9 +180,33 @@ pub fn ifft(input: &[Complex]) -> Vec<Complex> {
 /// assert!((spectrum[1].re - 4.0).abs() < 1e-12);
 /// ```
 pub fn rfft(input: &[f64]) -> Vec<Complex> {
-    let complex: Vec<Complex> = input.iter().map(|&x| Complex::real(x)).collect();
-    let mut spectrum = fft(&complex);
-    spectrum.truncate(input.len() / 2 + 1);
+    let n = input.len();
+    if n < 4 || n % 2 != 0 {
+        let complex: Vec<Complex> = input.iter().map(|&x| Complex::real(x)).collect();
+        let mut spectrum = fft(&complex);
+        spectrum.truncate(n / 2 + 1);
+        return spectrum;
+    }
+    // An even length: pack neighbours into one complex sequence of half the
+    // length, `z_j = x_{2j} + i·x_{2j+1}`, transform that, and split the
+    // even- and odd-indexed parts back out -- about half the work of
+    // transforming the real sequence as complex.
+    let h = n / 2;
+    let packed: Vec<Complex> = (0..h)
+        .map(|j| Complex::new(input[2 * j], input[2 * j + 1]))
+        .collect();
+    let z = fft(&packed);
+    let mut spectrum = Vec::with_capacity(h + 1);
+    for k in 0..=h {
+        let zk = z[k % h];
+        let zc = z[(h - k) % h].conj();
+        // E_k = (Z_k + conj(Z_{h-k})) / 2, O_k = (Z_k - conj(Z_{h-k})) / (2i)
+        let even = Complex::new(0.5 * (zk.re + zc.re), 0.5 * (zk.im + zc.im));
+        let diff = Complex::new(zk.re - zc.re, zk.im - zc.im);
+        let odd = Complex::new(0.5 * diff.im, -0.5 * diff.re);
+        let twiddle = Complex::from_polar_unit(-2.0 * PI * k as f64 / n as f64);
+        spectrum.push(even + twiddle * odd);
+    }
     spectrum
 }
 

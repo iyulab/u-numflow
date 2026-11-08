@@ -10,6 +10,8 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ### Changed
 
+- `fourier::rfft` of an even length transforms a complex sequence of half the length and splits it, instead of
+  transforming the real sequence as complex: about half the time, the same bins to rounding.
 - `Matrix::eigen_symmetric` of a matrix with 64 or more rows reduces it to tridiagonal form by Householder
   reflections and finds the eigensystem by implicit QL, instead of cyclic Jacobi rotations (several sweeps of n³):
   800 rows take 2.2 s (about 20 s before), 2,049 rows a minute. Smaller matrices keep Jacobi, and its signs. An
