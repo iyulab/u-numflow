@@ -375,8 +375,22 @@ impl Matrix {
     }
 
     /// Frobenius norm: ‖A‖_F = √(Σᵢⱼ aᵢⱼ²).
+    ///
+    /// Summed relative to the largest entry, so the squares neither underflow
+    /// to 0 for entries below 1e-154 nor overflow to infinity above 1e154 --
+    /// the tolerances built on the norm then mean the same in any unit.
     pub fn frobenius_norm(&self) -> f64 {
-        self.data.iter().map(|x| x * x).sum::<f64>().sqrt()
+        let peak = self.data.iter().fold(0.0_f64, |m, x| m.max(x.abs()));
+        if peak == 0.0 || !peak.is_finite() {
+            // Zero, or an infinity/NaN entry: the plain sum says so too.
+            return self.data.iter().map(|x| x * x).sum::<f64>().sqrt();
+        }
+        peak * self
+            .data
+            .iter()
+            .map(|x| (x / peak) * (x / peak))
+            .sum::<f64>()
+            .sqrt()
     }
 
     /// Checks whether the matrix is symmetric within tolerance.
@@ -710,13 +724,38 @@ impl Matrix {
     /// assert!(dot.abs() < 1e-10);
     /// ```
     pub fn eigen_symmetric(&self) -> Result<(Vec<f64>, Matrix), MatrixError> {
-        let n = self.rows;
         if !self.is_square() {
             return Err(MatrixError::NotSquare {
                 rows: self.rows,
                 cols: self.cols,
             });
         }
+        // Solve a copy divided by a power of two near its largest entry -- an
+        // exact division, so no digit changes -- and multiply the eigenvalues
+        // back: the squares a norm or a rotation forms underflow to 0 for
+        // entries below 1e-154 (a covariance in 1e-100 units) and overflow
+        // above 1e154, and the answer must not depend on the unit.
+        let peak = self.data.iter().fold(0.0_f64, |m, x| m.max(x.abs()));
+        if !(peak.is_finite() && peak > 0.0) {
+            return self.eigen_symmetric_scaled();
+        }
+        let scale = 2.0_f64.powi((peak.log2().floor() as i32).clamp(-1022, 1023));
+        let scaled = Matrix {
+            data: self.data.iter().map(|x| x / scale).collect(),
+            rows: self.rows,
+            cols: self.cols,
+        };
+        let (mut values, vectors) = scaled.eigen_symmetric_scaled()?;
+        for value in &mut values {
+            *value *= scale;
+        }
+        Ok((values, vectors))
+    }
+
+    /// [`eigen_symmetric`](Self::eigen_symmetric) on a matrix whose largest
+    /// entry is of order 1 (or that is zero or not finite).
+    fn eigen_symmetric_scaled(&self) -> Result<(Vec<f64>, Matrix), MatrixError> {
+        let n = self.rows;
         // Symmetry tolerance: relative to matrix scale
         let sym_tol = 1e-10 * self.frobenius_norm();
         if !self.is_symmetric(sym_tol) {
@@ -1654,7 +1693,9 @@ mod proptests {
     fn eigen_symmetric_does_not_depend_on_the_scale_of_the_matrix() {
         let base = Matrix::from_rows(&[&[4.0, 1.0, 0.5], &[1.0, 3.0, 0.25], &[0.5, 0.25, 2.0]]);
         let (want, _) = base.eigen_symmetric().expect("symmetric");
-        for scale in [1e-3, 1e-12, 1e-18, 1e-24, 1e12] {
+        for scale in [
+            1e-3, 1e-12, 1e-18, 1e-24, 1e12, 1e-100, 1e-200, 1e100, 1e200,
+        ] {
             let scaled = Matrix::from_rows(&[
                 &[4.0 * scale, 1.0 * scale, 0.5 * scale],
                 &[1.0 * scale, 3.0 * scale, 0.25 * scale],
@@ -1800,6 +1841,27 @@ mod proptests {
                 &vectors,
             );
             assert!(orthonormal < 1e-11);
+        }
+    }
+
+    #[test]
+    fn the_norm_and_the_inverse_do_not_depend_on_the_unit() {
+        // A 2x2 covariance in units that make its squares under- or overflow.
+        for scale in [1e-200, 1e-100, 1e100, 1e200_f64] {
+            let m = Matrix::from_rows(&[&[4.0 * scale, 1.0 * scale], &[1.0 * scale, 3.0 * scale]]);
+            let norm = m.frobenius_norm();
+            assert!(
+                (norm / scale - 27.0_f64.sqrt()).abs() < 1e-12,
+                "norm at {scale:e}"
+            );
+            let inv = m.inverse().expect("not singular in any unit");
+            // A^-1 = [[3, -1], [-1, 4]] / 11 / scale
+            assert!(
+                (inv.get(0, 0) * scale - 3.0 / 11.0).abs() < 1e-12,
+                "inverse at {scale:e}"
+            );
+            assert!((inv.get(0, 1) * scale + 1.0 / 11.0).abs() < 1e-12);
+            assert!((m.determinant().is_ok() as u8) == 1);
         }
     }
 }

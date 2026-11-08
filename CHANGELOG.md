@@ -18,6 +18,11 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ### Fixed
 
+- `Matrix::frobenius_norm` squared every entry, so it underflowed to 0 for entries below about 1e-154 and
+  overflowed to infinity above 1e154; the tolerances built on it then called a covariance in 1e100 units singular
+  (`inverse` refused it) and `eigen_symmetric` of one in 1e-100 units returned zeros. The norm is now summed relative
+  to the largest entry, and `eigen_symmetric` solves a copy divided by a power of two near that entry (an exact
+  division) and multiplies the eigenvalues back, so both are right in any unit.
 - The regularized incomplete beta and gamma functions (every beta, gamma and chi-squared CDF, and the F and
   t p-values built on them) lost their digits as a shape grew: a fixed 200-term limit gave out near a shape of
   1e4 (`P(1e4, 1e4 − 1/3)` was 0.477, not 0.5; `P(1e6, ·)` was 0.08), and `I_0.5(1e8, 1e8)` was 1.306. The term limit
