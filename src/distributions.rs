@@ -968,6 +968,12 @@ impl GammaDistribution {
             }
             return 0.0;
         }
+        let z = self.rate * x;
+        // f(x) = (z^a e^−z / Γ(a)) / x: the kernel keeps its digits at a large
+        // shape, where `a ln z`, `z` and `ln Γ(a)` of order `a ln a` cancel.
+        if self.shape >= 10.0 && z > 0.0 && z.is_finite() {
+            return (special::ln_gamma_kernel(self.shape, z) - x.ln()).exp();
+        }
         let log_pdf = self.shape * self.rate.ln() - special::ln_gamma(self.shape)
             + (self.shape - 1.0) * x.ln()
             - self.rate * x;
@@ -1219,6 +1225,10 @@ impl ChiSquared {
             return 0.0;
         }
         let half_k = self.k / 2.0;
+        // f(x) = ((x/2)^h e^−x/2 / Γ(h)) / x, the gamma kernel at z = x/2.
+        if half_k >= 10.0 && x.is_finite() {
+            return (special::ln_gamma_kernel(half_k, x / 2.0) - x.ln()).exp();
+        }
         let ln_pdf =
             (half_k - 1.0) * x.ln() - x / 2.0 - half_k * 2.0_f64.ln() - special::ln_gamma(half_k);
         ln_pdf.exp()

@@ -322,6 +322,57 @@ fn stirling_correction(z: f64) -> f64 {
         / z
 }
 
+/// `ln Γ(h + ½) − ln Γ(h)`: `½ ln h − 1/(8h) + …`, a number of order `ln h` that
+/// the difference of two `ln Γ` of order `h ln h` cannot give once `h` is large
+/// (a `ln Γ` of 1e10 has a last digit of 3e-5). For `h >= 10` the Stirling series
+/// of both are subtracted first: `h ln(1 + 1/(2h)) + ½ ln h − ½ + c(h+½) − c(h)`.
+pub(crate) fn ln_gamma_half_step(h: f64) -> f64 {
+    if h >= STIRLING_FROM && h.is_finite() {
+        return h * (0.5 / h).ln_1p() + 0.5 * h.ln() - 0.5 + stirling_correction(h + 0.5)
+            - stirling_correction(h);
+    }
+    ln_gamma(h + 0.5) - ln_gamma(h)
+}
+
+/// The deviance term `a ln(a/z) + z − a` (Loader 2000, "Fast and accurate
+/// computation of binomial probabilities"), which is `>= 0` and small when `z` is
+/// near `a`: there the direct form subtracts numbers of order `a` to leave one of
+/// order `(a − z)²/a`, so a series in `(a − z)/(a + z)` is summed instead.
+fn deviance_term(a: f64, z: f64) -> f64 {
+    if (a - z).abs() < 0.1 * (a + z) {
+        let v = (a - z) / (a + z);
+        let mut sum = (a - z) * v;
+        if sum.abs() < f64::MIN_POSITIVE {
+            return sum;
+        }
+        let mut term = 2.0 * a * v;
+        let v2 = v * v;
+        for j in 1..1000 {
+            term *= v2;
+            let next = sum + term / (2 * j + 1) as f64;
+            if next == sum {
+                return next;
+            }
+            sum = next;
+        }
+        return sum;
+    }
+    a * (a / z).ln() + z - a
+}
+
+/// `ln(z^a e^−z / Γ(a))` -- the kernel of the gamma density, whose terms
+/// `a ln z`, `z` and `ln Γ(a)` are of order `a ln a` and cancel to the order of
+/// `ln a` near the mode. For `a >= 10` it is `−deviance + ½ ln a − ½ ln 2π −
+/// c(a)` with `c` the Stirling tail, which keeps every digit at any shape.
+pub(crate) fn ln_gamma_kernel(a: f64, z: f64) -> f64 {
+    if a >= STIRLING_FROM && a.is_finite() && z > 0.0 && z.is_finite() {
+        return -deviance_term(a, z) + 0.5 * a.ln()
+            - 0.5 * (2.0 * std::f64::consts::PI).ln()
+            - stirling_correction(a);
+    }
+    a * z.ln() - z - ln_gamma(a)
+}
+
 /// `ln B(p, q)` for `0 < p <= q` and `q >= 10`, without the cancellation of
 /// `ln Γ(p) + ln Γ(q) − ln Γ(p + q)`: the three terms are of order `q ln q`, so
 /// when `q` is large next to `p` their rounding (a `q` of 1e10 has a `ln Γ` whose
@@ -921,10 +972,11 @@ pub fn t_distribution_pdf(t: f64, df: f64) -> f64 {
         return f64::NAN;
     }
     let half_df = df / 2.0;
-    let log_pdf = ln_gamma(half_df + 0.5)
+    // `ln_1p`: for a `t²/df` under a double's epsilon the 1 + … rounds it away,
+    // which a half-df of 1e14 multiplies back.
+    let log_pdf = ln_gamma_half_step(half_df)
         - 0.5 * (df * std::f64::consts::PI).ln()
-        - ln_gamma(half_df)
-        - (half_df + 0.5) * (1.0 + t * t / df).ln();
+        - (half_df + 0.5) * (t * t / df).ln_1p();
     log_pdf.exp()
 }
 
@@ -1257,7 +1309,7 @@ pub fn noncentral_t_cdf(t: f64, df: f64, delta: f64) -> f64 {
         let mut a = 0.5;
         let b = 0.5 * df;
         let rxb = (1.0 - x).powf(b);
-        let albeta = 0.5 * std::f64::consts::PI.ln() + ln_gamma(b) - ln_gamma(0.5 + b);
+        let albeta = 0.5 * std::f64::consts::PI.ln() - ln_gamma_half_step(b);
         let mut xodd = regularized_incomplete_beta(x, a, b);
         let mut godd = 2.0 * rxb * (a * x.ln() - albeta).exp();
         let mut xeven = 1.0 - rxb;

@@ -41,6 +41,12 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
   continued fraction's first term subtracted two numbers equal to the digits of `1 − x` and now uses the
   exact side. Checked against the closed forms `I_x(a, 1) = x^a` and `I_x(1, b) = 1 − (1−x)^b` for shapes
   from 1e2 to 1e14 (relative error under 1e-9).
+- The densities of Student's t, the gamma and chi-squared lost their digits at a large shape the same way, by
+  subtracting `ln Γ` values of order `a ln a`: the t density was off by 8 % at 1e14 degrees of freedom and the gamma
+  density by 7e-4 at a shape of 1e11. The t density takes `ln Γ(h+½) − ln Γ(h)` as the difference of their Stirling
+  series (and `ln_1p` for the `1 + t²/df`), and the gamma and chi-squared densities use the saddle-point form
+  `−D(a, z) + ½ ln a − ½ ln 2π − c(a)` with Loader's deviance term, so every one is right to 1e-12 against mpmath at
+  shapes from 1e3 to 1e14. The noncentral t CDF's `ln B` term uses the same step.
 
 ## [0.16.1] - 2026-11-08
 
