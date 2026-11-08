@@ -8,6 +8,8 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ## [Unreleased]
 
+## [0.16.1] - 2026-11-08
+
 ### Changed
 
 - `fourier::rfft` of an even length transforms a complex sequence of half the length and splits it, instead of
