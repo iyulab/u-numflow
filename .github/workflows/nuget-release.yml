@@ -121,6 +121,9 @@ jobs:
     name: Pack & Publish NuGet
     needs: [check-version, build-native]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # trusted publishing (OIDC) -- no long-lived NuGet key
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -184,12 +187,23 @@ jobs:
           path: ./nupkg/*.nupkg
           retention-days: 7
 
+      # Trusted publishing: a short-lived key from the repository's OIDC token.
+      # A failed login fails the job.
+      - name: NuGet login (trusted publishing)
+        id: login
+        if: github.event_name == 'push' || inputs.publish != false
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
+        with:
+          user: ${{ secrets.NUGET_USER }}
+
       - name: Publish to NuGet.org
         if: github.event_name == 'push' || inputs.publish != false
+        env:
+          NUGET_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
         run: |
           VERSION=${{ needs.check-version.outputs.version }}
           dotnet nuget push ./nupkg/${{ env.PACKAGE_NAME }}.${VERSION}.nupkg \
-            --api-key ${{ secrets.NUGET_API_KEY }} \
+            --api-key "$NUGET_KEY" \
             --source https://api.nuget.org/v3/index.json \
             --skip-duplicate
 
