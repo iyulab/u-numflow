@@ -8,6 +8,17 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ## [Unreleased]
 
+### Fixed
+
+- The normal tails lost digits with the square of the distance: `standard_normal_sf`, `standard_normal_cdf` (and so
+  `normal_sf` / `normal_cdf` in every transport) rounded `x/√2` to a double before the exponential, which multiplies
+  that rounding by `x²` — a relative error of 2·10⁻¹⁵ at 4 sd, 10⁻¹⁴ at 10 sd, 10⁻¹³ at 25 sd and 1.7·10⁻¹³ at 35 sd, against
+  the documented 10⁻¹⁵. `standard_normal_pdf` did the same with `exp(−x²/2)` (6·10⁻¹⁴ at 35 sd). The exponent is now
+  built from `x` with an exactly representable square (the construction fdlibm's `erfc` uses for its own argument), and the
+  worst relative error over a grid to 38 sd, checked against mpmath at 40 digits, is 4·10⁻¹⁶ for all three. The
+  quantiles (`inverse_normal_cdf`, `inverse_normal_sf`) were already at 7·10⁻¹⁶. The doctests' value of Φ(−6) was off in
+  its last digits (`…948e-10`; the value is `…981e-10`) and is corrected.
+
 ## [UNumflow 0.8.2] - 2026-11-09
 
 The .NET client only; the crate is unchanged at 0.16.2. The package carries the native library built from 0.16.2, where

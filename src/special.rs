@@ -15,8 +15,10 @@ const FRAC_1_SQRT_2PI: f64 = 0.3989422804014326779399460599343818684758586311649
 /// `1 − erf`), so the lower tail keeps its relative precision.
 ///
 /// # Accuracy
-/// Relative error of order 10⁻¹⁵ wherever the result is representable,
-/// including the lower tail (`x ≪ 0`). For the upper tail use
+/// Relative error of a few 10⁻¹⁶ wherever the result is representable,
+/// including the lower tail (`x ≪ 0`, down to `x ≈ −38`): the tail is formed
+/// from `x` itself, not from `x/√2` rounded to a double, whose error is
+/// multiplied by `x²` in the result. For the upper tail use
 /// [`standard_normal_sf`]: `1 − Φ(x)` cannot resolve values below ~10⁻¹⁶.
 ///
 /// # Examples
@@ -24,12 +26,15 @@ const FRAC_1_SQRT_2PI: f64 = 0.3989422804014326779399460599343818684758586311649
 /// use u_numflow::special::standard_normal_cdf;
 /// assert_eq!(standard_normal_cdf(0.0), 0.5);
 /// assert!((standard_normal_cdf(1.96) - 0.9750021048517795).abs() < 1e-15);
-/// // Lower tail keeps relative precision: Φ(−6) = 9.865876450376948e−10
-/// assert!((standard_normal_cdf(-6.0) / 9.865876450376948e-10 - 1.0).abs() < 1e-13);
+/// // Lower tail keeps relative precision: Φ(−6) = 9.865876450376981e−10
+/// assert!((standard_normal_cdf(-6.0) / 9.865876450376981e-10 - 1.0).abs() < 1e-15);
 /// assert_eq!(standard_normal_cdf(f64::INFINITY), 1.0);
 /// assert_eq!(standard_normal_cdf(f64::NEG_INFINITY), 0.0);
 /// ```
 pub fn standard_normal_cdf(x: f64) -> f64 {
+    if x <= -TAIL_FROM {
+        return standard_normal_upper_tail(-x);
+    }
     0.5 * erfc(-x * FRAC_1_SQRT_2)
 }
 
@@ -41,19 +46,61 @@ pub fn standard_normal_cdf(x: f64) -> f64 {
 /// has no significant digits left.
 ///
 /// # Accuracy
-/// Relative error of order 10⁻¹⁵ wherever the result is representable
-/// (up to `x ≈ 38`, beyond which it underflows to 0).
+/// Relative error of a few 10⁻¹⁶ wherever the result is representable
+/// (up to `x ≈ 38`, beyond which it underflows to 0): the tail is formed from
+/// `x` itself, not from `x/√2` rounded to a double, whose error is multiplied
+/// by `x²` in the result (10⁻¹³ at `x = 35`).
 ///
 /// # Examples
 /// ```
 /// use u_numflow::special::standard_normal_sf;
 /// assert_eq!(standard_normal_sf(0.0), 0.5);
-/// // P(Z > 6) = 9.865876450376948e−10
-/// assert!((standard_normal_sf(6.0) / 9.865876450376948e-10 - 1.0).abs() < 1e-13);
+/// // P(Z > 6) = 9.865876450376981e−10
+/// assert!((standard_normal_sf(6.0) / 9.865876450376981e-10 - 1.0).abs() < 1e-15);
 /// assert_eq!(standard_normal_sf(f64::INFINITY), 0.0);
 /// ```
 pub fn standard_normal_sf(x: f64) -> f64 {
+    if x >= TAIL_FROM {
+        return standard_normal_upper_tail(x);
+    }
     0.5 * erfc(x * FRAC_1_SQRT_2)
+}
+
+/// `1.25·√2`: from here `x/√2` is in the range where [`erfc`] is an exponential.
+const TAIL_FROM: f64 = 1.767_766_952_966_368_9;
+
+/// `exp(−x²/2)` with the square taken exactly: `x²/2` has the rounding error of
+/// a product that large, and the exponential multiplies it by `x²/2` again
+/// (10⁻¹³ at `x = 35`). `x = z + (x − z)` with `z` the 32 high bits of `x`,
+/// whose square is exactly representable, leaves the rounded part to a factor
+/// within 10⁻³ of 1 (fdlibm `s_erf.c`, note 1).
+fn exp_neg_half_square(x: f64) -> f64 {
+    let ax = x.abs();
+    if ax.is_infinite() {
+        return 0.0;
+    }
+    let z = f64::from_bits(ax.to_bits() & 0xFFFF_FFFF_0000_0000);
+    (-0.5 * z * z).exp() * (-0.5 * (ax - z) * (ax + z)).exp()
+}
+
+/// `1 − Φ(x) = ½·erfc(x/√2)` for `x ≥ 1.25·√2`, formed without subtraction and
+/// without rounding `x/√2`: the exponent `−x²/2 − 0.5625 + R/S` of fdlibm's
+/// `erfc` is built from `x` (`z = x` truncated to 32 bits, so `z²/2 + 0.5625`
+/// is exact), so the result keeps a few ulp of relative accuracy to the
+/// underflow at `x ≈ 38.5`.
+fn standard_normal_upper_tail(x: f64) -> f64 {
+    let t = x * FRAC_1_SQRT_2;
+    if t >= 28.0 {
+        return 0.0;
+    }
+    let s = 2.0 / (x * x); // 1/t²
+    let (r, big_s) = if t < 1.0 / 0.35 {
+        (horner(s, &RA), 1.0 + s * horner(s, &SA))
+    } else {
+        (horner(s, &RB), 1.0 + s * horner(s, &SB))
+    };
+    let z = f64::from_bits(x.to_bits() & 0xFFFF_FFFF_0000_0000);
+    0.5 * (-0.5 * z * z - 0.5625).exp() * (-0.5 * (x - z) * (x + z) + r / big_s).exp() / t
 }
 
 /// Inverse of the standard normal CDF (quantile function).
@@ -225,7 +272,7 @@ pub fn standard_normal_pdf(x: f64) -> f64 {
     if x.is_nan() {
         return f64::NAN;
     }
-    FRAC_1_SQRT_2PI * (-0.5 * x * x).exp()
+    FRAC_1_SQRT_2PI * exp_neg_half_square(x)
 }
 
 /// Lanczos approximation of ln Γ(x).
@@ -1343,6 +1390,56 @@ pub fn noncentral_t_cdf(t: f64, df: f64, delta: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `(x, ½·erfc(x/√2), φ(x))` to 20 digits from mpmath at 40 digits: the
+    /// tail beyond 6 sd was off by 10⁻¹³ (35 sd) when `x/√2` was rounded to a
+    /// double before the exponential multiplied the error by `x²`.
+    #[allow(clippy::excessive_precision)] // the oracle's digits, not a double's
+    const NORMAL_TAIL_REFERENCE: [(f64, f64, f64); 8] = [
+        (1.8, 0.035930319112925800454, 0.078950158300894149457),
+        (3.0, 0.0013498980316300945267, 0.0044318484119380071756),
+        (6.0, 9.865876450376981407e-10, 6.075882849823285487e-9),
+        (10.0, 7.619853024160526066e-24, 7.6945986267064193463e-23),
+        (15.5, 1.7344607917938700513e-54, 2.6995130245885872525e-53),
+        (20.0, 2.7536241186062336951e-89, 5.5209483621597631896e-88),
+        (27.3, 2.1207986243198491043e-164, 5.7975280291088499778e-163),
+        (35.0, 1.124910706472406244e-268, 3.9403962771360243307e-267),
+    ];
+
+    /// Φ, 1 − Φ and φ keep a few ulp of relative accuracy out to 35 sd — the
+    /// measured worst case is 4·10⁻¹⁶ over a grid to 38 (1.7·10⁻¹³ before).
+    #[test]
+    fn normal_tails_are_accurate_to_a_few_ulp() {
+        for (x, tail, pdf) in NORMAL_TAIL_REFERENCE {
+            for (name, got, want) in [
+                ("sf", standard_normal_sf(x), tail),
+                ("cdf(-x)", standard_normal_cdf(-x), tail),
+                ("pdf", standard_normal_pdf(x), pdf),
+                ("pdf(-x)", standard_normal_pdf(-x), pdf),
+            ] {
+                let rel = (got / want - 1.0).abs();
+                assert!(rel < 1e-15, "{name} at {x}: {got:e} vs {want:e} ({rel:e})");
+            }
+        }
+    }
+
+    /// Where the tail takes over from `erfc` (x = 1.25·√2) the two agree, and
+    /// the cut is monotone across it.
+    #[test]
+    fn normal_tail_is_continuous_across_the_handover() {
+        let edge = TAIL_FROM;
+        for k in -8..=8_i32 {
+            let x = f64::from_bits((edge.to_bits() as i64 + i64::from(k)) as u64);
+            let via_erfc = 0.5 * erfc(x * FRAC_1_SQRT_2);
+            let rel = (standard_normal_sf(x) / via_erfc - 1.0).abs();
+            assert!(rel < 2e-15, "x = {x}: {rel:e}");
+        }
+        let (below, above) = (
+            standard_normal_sf(f64::from_bits(edge.to_bits() - 1)),
+            standard_normal_sf(f64::from_bits(edge.to_bits() + 1)),
+        );
+        assert!(above <= below, "sf must not rise across the handover");
+    }
 
     // --- standard_normal_cdf ---
 
