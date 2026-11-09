@@ -18,7 +18,7 @@
 //!   of discrete Fourier transform." *IEEE Transactions on Audio and
 //!   Electroacoustics*, 18(4), 451–455.
 
-use std::f64::consts::PI;
+use std::f64::consts::FRAC_PI_4;
 use std::ops::{Add, Mul, Sub};
 
 /// A complex number with `f64` parts.
@@ -204,7 +204,7 @@ pub fn rfft(input: &[f64]) -> Vec<Complex> {
         let even = Complex::new(0.5 * (zk.re + zc.re), 0.5 * (zk.im + zc.im));
         let diff = Complex::new(zk.re - zc.re, zk.im - zc.im);
         let odd = Complex::new(0.5 * diff.im, -0.5 * diff.re);
-        let twiddle = Complex::from_polar_unit(-2.0 * PI * k as f64 / n as f64);
+        let twiddle = unit_root(k, n).conj();
         spectrum.push(even + twiddle * odd);
     }
     spectrum
@@ -218,17 +218,86 @@ fn transform(input: &[Complex], inverse: bool) -> Vec<Complex> {
     }
     let mut data = input.to_vec();
     if n.is_power_of_two() {
-        radix2_in_place(&mut data, inverse);
+        radix2_in_place(&mut data, &stage_roots(n), inverse);
         data
     } else {
         bluestein(&data, inverse)
     }
 }
 
-/// Iterative radix-2 Cooley-Tukey; `data.len()` must be a power of two.
-fn radix2_in_place(data: &mut [Complex], inverse: bool) {
+/// `exp(2πi·k/n)` for `0 ≤ k < n`, to an ulp of each part.
+///
+/// The angle is reduced to an octant by integer arithmetic (`8k` against `n`),
+/// so what reaches `sin` and `cos` is at most π/4 and carries the rounding of
+/// one quotient — where a running product of steps `w ← w·step`, or a
+/// `2π·k/n` that reaches 2π, grows it with `k`.
+fn unit_root(k: usize, n: usize) -> Complex {
+    let (k8, n64) = (8 * k as u64, n as u64);
+    let octant = k8 / n64;
+    let r = k8 % n64; // the angle inside the octant is π/4 · r/n
+    let (c, s) = if octant % 2 == 0 {
+        let phi = FRAC_PI_4 * r as f64 / n as f64;
+        (phi.cos(), phi.sin())
+    } else {
+        // θ = π/2 − ψ with ψ = π/4 · (n − r)/n
+        let psi = FRAC_PI_4 * (n64 - r) as f64 / n as f64;
+        (psi.sin(), psi.cos())
+    };
+    match octant / 2 {
+        0 => Complex::new(c, s),
+        1 => Complex::new(-s, c),
+        2 => Complex::new(-c, -s),
+        _ => Complex::new(s, -c),
+    }
+}
+
+/// The twiddles of a radix-2 transform of size `n` (a power of two ≥ 2), one
+/// block per stage: entry `half + k` is `exp(2πi·k/(2·half))`, `k < half`, so
+/// a stage of length `len = 2·half` reads its block in order and the whole
+/// table is `n` entries. Only the first octant of the last block is computed
+/// with `sin`/`cos`; the rest of it are reflections and quarter turns of that
+/// octant, exactly, and each earlier block is every other entry of the next.
+fn stage_roots(n: usize) -> Vec<Complex> {
+    let half = n / 2;
+    let mut table = vec![Complex::default(); n];
+    if n < 8 {
+        for k in 0..half {
+            table[half + k] = unit_root(k, n);
+        }
+    } else {
+        let (quarter, eighth) = (n / 4, n / 8);
+        for k in 0..=eighth {
+            table[half + k] = unit_root(k, n);
+        }
+        for k in eighth + 1..quarter {
+            let m = table[half + quarter - k];
+            table[half + k] = Complex::new(m.im, m.re); // cos(π/2 − x) = sin x
+        }
+        for k in quarter..half {
+            let m = table[half + k - quarter];
+            table[half + k] = Complex::new(-m.im, m.re); // a quarter turn: ·i
+        }
+    }
+    let mut block = half / 2;
+    while block >= 1 {
+        for k in 0..block {
+            table[block + k] = table[2 * block + 2 * k];
+        }
+        block /= 2;
+    }
+    table
+}
+
+/// Iterative radix-2 Cooley-Tukey; `data.len()` must be a power of two and
+/// `roots` its [`stage_roots`].
+///
+/// Every twiddle is read from the table, not accumulated as `w ← w·step`
+/// along the stage: that product's rounding grows with the number of steps,
+/// a relative error of 10⁻¹⁴ at 2¹⁰ points and 4·10⁻¹¹ at 2²² against the
+/// 10⁻¹⁶ the butterflies themselves give.
+fn radix2_in_place(data: &mut [Complex], roots: &[Complex], inverse: bool) {
     let n = data.len();
-    debug_assert!(n.is_power_of_two());
+    debug_assert!(n.is_power_of_two() && roots.len() == n);
 
     // Bit-reversal permutation.
     let bits = n.trailing_zeros();
@@ -239,18 +308,20 @@ fn radix2_in_place(data: &mut [Complex], inverse: bool) {
         }
     }
 
+    // The table holds exp(+2πi·k/len); the forward transform uses its conjugate.
     let sign = if inverse { 1.0 } else { -1.0 };
     let mut len = 2;
     while len <= n {
-        let step = Complex::from_polar_unit(sign * 2.0 * PI / len as f64);
-        for start in (0..n).step_by(len) {
-            let mut w = Complex::real(1.0);
-            for k in 0..len / 2 {
-                let a = data[start + k];
-                let b = data[start + k + len / 2] * w;
-                data[start + k] = a + b;
-                data[start + k + len / 2] = a - b;
-                w = w * step;
+        let half = len / 2;
+        let stage = &roots[half..len];
+        for block in data.chunks_exact_mut(len) {
+            let (lo, hi) = block.split_at_mut(half);
+            for ((a, b), root) in lo.iter_mut().zip(hi.iter_mut()).zip(stage) {
+                let w = Complex::new(root.re, sign * root.im);
+                let t = *b * w;
+                let u = *a;
+                *a = u + t;
+                *b = u - t;
             }
         }
         len <<= 1;
@@ -267,12 +338,13 @@ fn bluestein(input: &[Complex], inverse: bool) -> Vec<Complex> {
     let m = (2 * n - 1).next_power_of_two();
     let sign = if inverse { 1.0 } else { -1.0 };
 
-    // Chirp: the angle is π·j²/n; j² is reduced modulo 2n first so the
-    // argument stays exact for large j.
+    // Chirp: the angle is π·j²/n = 2π·(j² mod 2n)/(2n); j² is reduced modulo
+    // 2n first so the argument stays exact for large j.
     let chirp: Vec<Complex> = (0..n)
         .map(|j| {
-            let jj = (j * j) % (2 * n);
-            Complex::from_polar_unit(sign * PI * jj as f64 / n as f64)
+            let jj = ((j as u128 * j as u128) % (2 * n) as u128) as usize;
+            let root = unit_root(jj, 2 * n);
+            Complex::new(root.re, sign * root.im)
         })
         .collect();
 
@@ -288,10 +360,11 @@ fn bluestein(input: &[Complex], inverse: bool) -> Vec<Complex> {
         b[m - j] = c;
     }
 
-    radix2_in_place(&mut a, false);
-    radix2_in_place(&mut b, false);
+    let roots = stage_roots(m);
+    radix2_in_place(&mut a, &roots, false);
+    radix2_in_place(&mut b, &roots, false);
     let mut c: Vec<Complex> = a.iter().zip(&b).map(|(&x, &y)| x * y).collect();
-    radix2_in_place(&mut c, true);
+    radix2_in_place(&mut c, &roots, true);
     let scale = 1.0 / m as f64;
 
     (0..n).map(|k| c[k].scale(scale) * chirp[k]).collect()
@@ -301,6 +374,7 @@ fn bluestein(input: &[Complex], inverse: bool) -> Vec<Complex> {
 mod tests {
     use super::*;
     use proptest::prelude::*;
+    use std::f64::consts::PI;
 
     fn naive_dft(x: &[Complex], inverse: bool) -> Vec<Complex> {
         let n = x.len();
@@ -329,6 +403,61 @@ mod tests {
                 "bin {i}: {x:?} vs {y:?} (|Δ| = {})",
                 (*x - *y).norm()
             );
+        }
+    }
+
+    /// The octant reduction names the right point for every `k`, on lengths of
+    /// every kind (odd, 3·2ᵏ, a prime, a power of two).
+    #[test]
+    fn unit_roots_are_on_the_circle_at_the_right_angle() {
+        for n in [1_usize, 2, 3, 5, 8, 12, 100, 1024, 4097] {
+            for k in 0..n {
+                let root = unit_root(k, n);
+                let (sin, cos) = (2.0 * PI * k as f64 / n as f64).sin_cos();
+                assert!(
+                    (root.re - cos).abs() < 1e-12 && (root.im - sin).abs() < 1e-12,
+                    "k {k} n {n}"
+                );
+                assert!((root.norm_sqr() - 1.0).abs() < 4e-16, "k {k} n {n}");
+            }
+        }
+        // The axes and the half-turn are exact.
+        assert_eq!(unit_root(0, 8), Complex::new(1.0, 0.0));
+        assert_eq!(unit_root(2, 8).re.abs(), 0.0);
+        assert_eq!(unit_root(2, 8).im, 1.0);
+        assert_eq!(unit_root(4, 8), Complex::new(-1.0, 0.0));
+    }
+
+    /// A complex exponential `exp(2πi·m·j/n)` transforms to `n` at bin `m` and
+    /// nothing elsewhere; whatever else shows is the transform's own error. It
+    /// stays at a few 10⁻¹⁶ of the signal per bin at 2¹⁶ points and at a
+    /// prime length through Bluestein (a running product of twiddles gave 10⁻¹³
+    /// there, and grew with the length).
+    #[test]
+    fn a_pure_tone_stays_in_its_bin_at_large_lengths() {
+        for (n, m) in [(1_usize << 16, 12345_usize), (50_021, 777)] {
+            let tone: Vec<Complex> = (0..n)
+                .map(|j| {
+                    let r = ((m as u128 * j as u128) % n as u128) as f64;
+                    let (sin, cos) = (2.0 * PI * r / n as f64).sin_cos();
+                    Complex::new(cos, sin)
+                })
+                .collect();
+            let spectrum = fft(&tone);
+            let sumsq: f64 = spectrum
+                .iter()
+                .enumerate()
+                .map(|(k, z)| {
+                    let (re, im) = if k == m {
+                        (z.re - n as f64, z.im)
+                    } else {
+                        (z.re, z.im)
+                    };
+                    re * re + im * im
+                })
+                .sum();
+            let per_bin = (sumsq / n as f64).sqrt() / (n as f64).sqrt();
+            assert!(per_bin < 2e-15, "n {n}: {per_bin:e}");
         }
     }
 

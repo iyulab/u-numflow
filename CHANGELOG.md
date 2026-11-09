@@ -18,6 +18,13 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
   worst relative error over a grid to 38 sd, checked against mpmath at 40 digits, is 4·10⁻¹⁶ for all three. The
   quantiles (`inverse_normal_cdf`, `inverse_normal_sf`) were already at 7·10⁻¹⁶. The doctests' value of Φ(−6) was off in
   its last digits (`…948e-10`; the value is `…981e-10`) and is corrected.
+- The radix-2 FFT built each stage's twiddles as a running product (`w ← w·step`), so their rounding grew with the
+  stage length: against a transform with directly computed twiddles the relative error was 10⁻¹⁴ at 2¹⁰ points,
+  10⁻¹³ at 2¹⁴, 2·10⁻¹² at 2¹⁸ and 4·10⁻¹¹ at 2²² (every `fft`, `ifft` and `rfft`, and Bluestein for any other length,
+  which runs three power-of-two transforms; the autocorrelation, periodogram and period estimates built on them). The
+  twiddles now come from a table whose entries are reduced to the first octant by integer arithmetic (exact
+  reflections and quarter turns for the rest), and the error is 8·10⁻¹⁶ at 2²². The same table-per-stage layout keeps
+  the speed (2²² points 0.37 s before, 0.40 s after); the table is `16·n` bytes, held for the one transform.
 
 ## [UNumflow 0.8.2] - 2026-11-09
 
