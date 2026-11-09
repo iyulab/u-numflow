@@ -25,6 +25,12 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
   twiddles now come from a table whose entries are reduced to the first octant by integer arithmetic (exact
   reflections and quarter turns for the rest), and the error is 8·10⁻¹⁶ at 2²². The same table-per-stage layout keeps
   the speed (2²² points 0.37 s before, 0.40 s after); the table is `16·n` bytes, held for the one transform.
+- `Exponential` and `Weibull` computed their CDF as `1 − exp(−y)`, their survival function (`survival`, `reliability`) as
+  `1 − CDF` and their quantile as `−ln(1 − p)`. A small failure probability lost its digits (`F` at `y = 10⁻¹⁴` was
+  off by 8·10⁻⁴, at `10⁻¹⁰` by 10⁻⁶), the quantile at `p = 10⁻¹⁵` was 1–3 % off, and the survival function was 0 from
+  `y = 37` although it is a number to `y ≈ 745`. They use `expm1`, `ln_1p` and `exp(−y)` directly now: 2·10⁻¹⁶ for the
+  CDF and quantile over `y` from 10⁻¹⁴ to 740 (and `p` from 10⁻¹⁵), and 4·10⁻¹⁴ at the far end of the survival function
+  (`y ≈ 500`, where the rounding of `y` itself is multiplied by `y`).
 
 ## [UNumflow 0.8.2] - 2026-11-09
 

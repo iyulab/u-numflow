@@ -739,16 +739,18 @@ impl Weibull {
         (self.shape / self.scale) * z.powf(self.shape - 1.0) * (-z.powf(self.shape)).exp()
     }
 
-    /// CDF: F(t) = 1 − exp(−(t/η)^β).
+    /// CDF: F(t) = 1 − exp(−(t/η)^β), as `−expm1(−(t/η)^β)`: a small failure
+    /// probability keeps its digits (`1 − exp(−10⁻¹⁴)` is wrong in the fourth).
     pub fn cdf(&self, t: f64) -> f64 {
         if t <= 0.0 {
             return 0.0;
         }
         let z = t / self.scale;
-        1.0 - (-z.powf(self.shape)).exp()
+        -(-z.powf(self.shape)).exp_m1()
     }
 
-    /// Quantile (inverse CDF): t = η·(−ln(1−p))^(1/β).
+    /// Quantile (inverse CDF): t = η·(−ln(1−p))^(1/β), with `ln(1−p)` taken as
+    /// `ln_1p(−p)` so a small `p` keeps its digits.
     ///
     /// Returns `None` if `p` is outside `[0, 1)`.
     pub fn quantile(&self, p: f64) -> Option<f64> {
@@ -758,7 +760,7 @@ impl Weibull {
         if p == 0.0 {
             return Some(0.0);
         }
-        Some(self.scale * (-(1.0 - p).ln()).powf(1.0 / self.shape))
+        Some(self.scale * (-(-p).ln_1p()).powf(1.0 / self.shape))
     }
 
     /// Hazard rate (failure rate): λ(t) = (β/η)·(t/η)^(β−1).
@@ -782,9 +784,15 @@ impl Weibull {
         (self.shape / self.scale) * z.powf(self.shape - 1.0)
     }
 
-    /// Reliability (survival) function: R(t) = 1 − F(t) = exp(−(t/η)^β).
+    /// Reliability (survival) function: R(t) = 1 − F(t) = exp(−(t/η)^β), formed
+    /// directly: `1 − F` is 0 once `F` rounds to 1 (`(t/η)^β > 37`), where R is
+    /// still a number down to `(t/η)^β ≈ 745`.
     pub fn reliability(&self, t: f64) -> f64 {
-        1.0 - self.cdf(t)
+        if t <= 0.0 {
+            return 1.0;
+        }
+        let z = t / self.scale;
+        (-z.powf(self.shape)).exp()
     }
 }
 
@@ -844,12 +852,13 @@ impl Exponential {
         }
     }
 
-    /// CDF: F(x) = 1 − exp(−λx) for x ≥ 0, 0 otherwise.
+    /// CDF: F(x) = 1 − exp(−λx) for x ≥ 0, 0 otherwise, as `−expm1(−λx)` so a
+    /// small `λx` keeps its digits.
     pub fn cdf(&self, x: f64) -> f64 {
         if x < 0.0 {
             0.0
         } else {
-            1.0 - (-self.rate * x).exp()
+            -(-self.rate * x).exp_m1()
         }
     }
 
@@ -863,7 +872,7 @@ impl Exponential {
         if p == 1.0 {
             return Some(f64::INFINITY);
         }
-        Some(-(1.0 - p).ln() / self.rate)
+        Some(-(-p).ln_1p() / self.rate)
     }
 
     /// Hazard rate (failure rate): h(x) = λ (constant).
@@ -871,9 +880,14 @@ impl Exponential {
         self.rate
     }
 
-    /// Survival function: S(x) = exp(−λx).
+    /// Survival function: S(x) = exp(−λx), formed directly: `1 − F` is 0 once
+    /// `F` rounds to 1 (`λx > 37`), where S is still a number down to `λx ≈ 745`.
     pub fn survival(&self, x: f64) -> f64 {
-        1.0 - self.cdf(x)
+        if x < 0.0 {
+            1.0
+        } else {
+            (-self.rate * x).exp()
+        }
     }
 }
 
@@ -1272,6 +1286,59 @@ impl ChiSquared {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The exponential and Weibull tails against 50-digit references: a failure
+    /// probability of 10⁻¹⁰ read 10⁻⁷ off in relative terms (`1 − exp(−y)`), a
+    /// quantile at `p = 10⁻¹⁵` 1 % off (`ln(1 − p)`), and the survival function
+    /// was 0 from `λx = 37` (`1 − F`) although it is a number to `λx ≈ 745`.
+    #[test]
+    #[allow(clippy::excessive_precision)] // the oracle's digits, not a double's
+    fn exponential_and_weibull_tails_keep_their_digits() {
+        let e1 = Exponential::new(1.0).unwrap();
+        let e25 = Exponential::new(2.5).unwrap();
+        let w2 = Weibull::new(2.0, 1.0).unwrap();
+        let w05 = Weibull::new(0.5, 1.0).unwrap();
+        let cases = [
+            ("exp cdf(1e-10)", e1.cdf(1e-10), 9.9999999995e-11),
+            (
+                "exp survival(50)",
+                e1.survival(50.0),
+                1.928749847963917783e-22,
+            ),
+            (
+                "exp quantile(1e-10)",
+                e1.quantile(1e-10).unwrap(),
+                1.00000000005e-10,
+            ),
+            ("exp(2.5) cdf(4e-12)", e25.cdf(4e-12), 9.99999999995e-12),
+            ("weibull cdf(1e-7)", w2.cdf(1e-7), 9.99999999999995e-15),
+            (
+                "weibull reliability(6)",
+                w2.reliability(6.0),
+                2.3195228302435693883e-16,
+            ),
+            (
+                "weibull reliability(20)",
+                w2.reliability(20.0),
+                1.915169596714005695e-174,
+            ),
+            (
+                "weibull quantile(1e-15)",
+                w2.quantile(1e-15).unwrap(),
+                3.1622776601683801226e-8,
+            ),
+            ("weibull(0.5) cdf(1e-20)", w05.cdf(1e-20), 9.9999999995e-11),
+        ];
+        for (name, got, want) in cases {
+            let rel = (got / want - 1.0).abs();
+            assert!(rel < 1e-14, "{name}: {got:e} vs {want:e} ({rel:e})");
+        }
+        // The complement relations still hold where both sides are resolved.
+        assert!((e1.cdf(1.0) + e1.survival(1.0) - 1.0).abs() < 1e-15);
+        assert!((w2.cdf(1.0) + w2.reliability(1.0) - 1.0).abs() < 1e-15);
+        assert_eq!(e1.survival(-1.0), 1.0);
+        assert_eq!(w2.reliability(0.0), 1.0);
+    }
 
     /// Widths whose products overflow, or whose squares cancel: the values
     /// are in range and come out finite and right.
