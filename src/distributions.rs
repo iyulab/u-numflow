@@ -891,47 +891,6 @@ impl Exponential {
     }
 }
 
-/// The solution `y` of `h(y) = target` for an increasing `h` that returns its
-/// own slope, by Newton steps kept inside a shrinking bracket `[lo, hi]` and
-/// replaced by a bisection when a step leaves it or the slope is unusable.
-///
-/// The quantile solvers use `y = ln x` and `h = ln P` (or `−ln Q`): a tail
-/// probability is a power of `x` for small `x`, so in the logarithm it is nearly
-/// a straight line and Newton converges from any start — where a step in `x`
-/// with an absolute floor (1e-15) or an absolute width (1e-14) cannot name a
-/// quantile of 1e-50 at all.
-fn solve_in_log(target: f64, start: f64, lo: f64, hi: f64, h: impl Fn(f64) -> (f64, f64)) -> f64 {
-    let (mut lo, mut hi) = (lo, hi);
-    let mut y = start.clamp(lo, hi);
-    for _ in 0..200 {
-        let (value, slope) = h(y);
-        let miss = value - target;
-        if miss == 0.0 {
-            return y;
-        }
-        if miss < 0.0 || miss.is_nan() {
-            lo = y;
-        } else {
-            hi = y;
-        }
-        let mut next = y - miss / slope;
-        if !(slope > 0.0 && slope.is_finite() && next > lo && next < hi) {
-            next = 0.5 * (lo + hi);
-        }
-        if (next - y).abs() <= 2.0 * f64::EPSILON * next.abs().max(1.0)
-            || hi - lo <= f64::EPSILON * next.abs().max(1.0)
-        {
-            return next;
-        }
-        y = next;
-    }
-    y
-}
-
-/// The smallest `ln x` a quantile solver looks for: `ln` of the least
-/// positive double. A quantile below it is reported as that double.
-const LN_LEAST_POSITIVE: f64 = -744.440_071_921_381_3;
-
 // ============================================================================
 // Gamma Distribution
 // ============================================================================
@@ -1052,11 +1011,12 @@ impl GammaDistribution {
 
     /// Quantile (inverse CDF).
     ///
-    /// Newton's method on `ln P` (or `−ln Q` for `p > ½`) in `ln x`, kept in a
-    /// bracket: accurate to the CDF's own digits at any `p`, down to the
-    /// quantiles that sit below 10⁻³⁰⁰ (reported as the least positive double)
-    /// — the tail is solved for from `1 − p`, which is exact for `p ≥ ½`, so a
-    /// `p` of `1 − 10⁻¹⁴` is a tail of 10⁻¹⁴ and not a rounding of it.
+    /// [`special::inverse_regularized_lower_gamma`] scaled by `1/β`: Newton's
+    /// method on `ln P` (or `−ln Q` for `p > ½`) in `ln x`, kept in a bracket —
+    /// accurate to the CDF's own digits at any `p`, down to the quantiles that
+    /// sit below 10⁻³⁰⁰ (reported as the least positive double). The tail is
+    /// solved for from `1 − p`, which is exact for `p ≥ ½`, so a `p` of
+    /// `1 − 10⁻¹⁴` is a tail of 10⁻¹⁴ and not a rounding of it.
     ///
     /// Returns `None` if p is not in [0, 1].
     pub fn quantile(&self, p: f64) -> Option<f64> {
@@ -1069,39 +1029,7 @@ impl GammaDistribution {
         if p == 1.0 {
             return Some(f64::INFINITY);
         }
-
-        let a = self.shape;
-        let lower = p <= 0.5;
-        let tail = if lower { p } else { 1.0 - p };
-        let target = if lower { tail.ln() } else { -tail.ln() };
-
-        // Wilson-Hilferty for a shape of 1 and up, where it names a positive
-        // value; otherwise the leading term of the series (lower tail) or of the
-        // asymptotic expansion of the upper tail.
-        let v = 1.0 / (9.0 * a);
-        let wilson = a * (1.0 - v + special::inverse_normal_cdf(p) * v.sqrt()).powi(3);
-        let start = if a >= 1.0 && wilson.is_finite() && wilson > 0.0 {
-            wilson.ln()
-        } else if lower {
-            (tail.ln() + special::ln_gamma(a + 1.0)) / a
-        } else {
-            let l = -tail.ln();
-            (l + (a - 1.0) * l.max(1.0).ln()).max(0.5).ln()
-        };
-
-        let y = solve_in_log(target, start, LN_LEAST_POSITIVE, f64::MAX.ln(), |y| {
-            let x = y.exp();
-            // x·f(x) = exp(ln(x^a e^−x / Γ(a))) is the slope of P and −Q in ln x.
-            let kernel = special::ln_gamma_kernel(a, x);
-            if lower {
-                let value = special::regularized_lower_gamma(a, x).ln();
-                (value, (kernel - value).exp())
-            } else {
-                let value = -special::regularized_upper_gamma(a, x).ln();
-                (value, (kernel + value).exp())
-            }
-        });
-        Some(y.exp() / self.rate)
+        Some(special::inverse_regularized_lower_gamma(self.shape, p) / self.rate)
     }
 }
 
@@ -1202,46 +1130,19 @@ impl BetaDistribution {
 
     /// Evaluates the quantile (inverse CDF) at probability p ∈ [0, 1].
     ///
-    /// Newton's method on `ln I` in `ln x` (the same solver as the gamma
-    /// quantile), accurate to the CDF's own digits for a quantile of any size —
-    /// 10⁻⁵⁰ as well as 0.3. A `p` above ½ is the lower tail `1 − p` (exact) of
-    /// the mirrored distribution Beta(β, α), subtracted from 1.
+    /// [`special::inverse_regularized_incomplete_beta`]: Newton's method on
+    /// `ln I` in `ln x`, accurate to the CDF's own digits for a quantile of any
+    /// size — 10⁻⁵⁰ as well as 0.3. A `p` above ½ is the exact tail `1 − p` of
+    /// the mirrored distribution Beta(β, α).
     ///
     /// Returns `None` if `p` is outside `[0, 1]`.
     pub fn quantile(&self, p: f64) -> Option<f64> {
         if !(0.0..=1.0).contains(&p) {
             return None;
         }
-        if p == 0.0 {
-            return Some(0.0);
-        }
-        if p == 1.0 {
-            return Some(1.0);
-        }
-        if p > 0.5 {
-            let mirrored = BetaDistribution {
-                alpha: self.beta,
-                beta: self.alpha,
-            };
-            return Some(1.0 - mirrored.lower_quantile(1.0 - p));
-        }
-        Some(self.lower_quantile(p))
-    }
-
-    /// The quantile for `0 < p ≤ ½`, solved in `ln x`.
-    fn lower_quantile(&self, p: f64) -> f64 {
-        let (a, b) = (self.alpha, self.beta);
-        let ln_b = special::ln_beta(a, b);
-        // I_x ≈ x^α / (α B(α, β)) for small x: the line `ln I = α·y − ln(α B)`.
-        let start = ((p.ln() + a.ln() + ln_b) / a).min(-0.01);
-        let y = solve_in_log(p.ln(), start, LN_LEAST_POSITIVE, 0.0, |y| {
-            let x = y.exp();
-            let value = special::regularized_incomplete_beta(x, a, b).ln();
-            // x·f(x) is the slope of I in ln x.
-            let ln_x_f = a * y + (b - 1.0) * (-x).ln_1p() - ln_b;
-            (value, (ln_x_f - value).exp())
-        });
-        y.exp().min(1.0)
+        Some(special::inverse_regularized_incomplete_beta(
+            p, self.alpha, self.beta,
+        ))
     }
 }
 

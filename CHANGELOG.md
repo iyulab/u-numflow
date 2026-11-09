@@ -8,6 +8,16 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ## [Unreleased]
 
+### Added
+
+- `special::inverse_regularized_lower_gamma(a, p)`, `inverse_regularized_upper_gamma(a, q)` and
+  `inverse_regularized_incomplete_beta(p, a, b)`: the inverses of `regularized_lower_gamma`, `regularized_upper_gamma`
+  and `regularized_incomplete_beta` (SciPy's `gammaincinv`, `gammainccinv` and `betaincinv`), the solver behind the gamma,
+  chi-squared and beta quantiles made public. The upper-tail inverse takes `q` as given, so a p-value of 10⁻²⁰⁰ names its
+  chi-squared critical value (`2 · inverse_regularized_upper_gamma(k/2, p_value)`) where `1 − q` has no digits; the beta
+  inverse mirrors (`inverse_regularized_incomplete_beta(1 − p, b, a) = 1 − x`) for a root within 10⁻¹⁶ of 1. They are not
+  in the WASM, C ABI or .NET surfaces: the quantiles built on them already are.
+
 ### Fixed
 
 - The normal tails lost digits with the square of the distance: `standard_normal_sf`, `standard_normal_cdf` (and so
@@ -38,9 +48,23 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
   is nearly a power of `x`, so in the logarithm it is a straight line — and take a `p` above ½ as the tail `1 − p`, which is
   exact: the relative error against 40-digit references is below 4·10⁻¹⁴ for `p` from 10⁻³⁰⁰ to 1 − 10⁻¹⁴ (shapes 0.1 to
   100), and a quantile below the least positive double is reported as that double. `ChiSquared::quantile` no longer returns
-  infinity for a `p` within 10⁻¹⁵ of 1. The free functions `t_distribution_quantile`, `f_distribution_quantile` and
-  `chi_squared_quantile` are unchanged: their relative error is below 4·10⁻¹⁰ for `p` from 10⁻⁶ to 1 − 10⁻⁶ but they
-  fail for `p` below about 10⁻¹⁰.
+  infinity for a `p` within 10⁻¹⁵ of 1. (The free functions `t_distribution_quantile`, `f_distribution_quantile`
+  and `chi_squared_quantile` are fixed by the next entry.)
+- `special::t_distribution_quantile`, `f_distribution_quantile` and `chi_squared_quantile` failed for a probability
+  below about 10⁻¹⁰ (`p` of a p-value, `1 − p` of a critical value at 10⁻¹⁴): the t one was a Newton iteration on the CDF
+  from the normal quantile, the other two bisected on the CDF to a width of 10⁻¹²–10⁻¹³ with a bracket that stops at 10¹⁵.
+  A Cauchy `t(1)` at `p = 10⁻³⁰` came out as −1.3·10¹⁶ (it is −3.18·10²⁹), `χ²(2)` at `p = 10⁻³⁰⁰` as 6·10⁻⁶¹ (it is
+  2·10⁻³⁰⁰), and a quantile beyond 10¹⁵ was returned as 10¹⁵. All three now solve the incomplete function itself, in
+  the logarithm of the quantile (the gamma and beta solver above): the chi-squared quantile is
+  `2 · inverse_regularized_lower_gamma(k/2, p)`, and t and F take the root `x` of the incomplete beta function together
+  with `1 − x` — whichever of the two is the smaller is the one solved for, against whichever of `p` and `1 − p` is the
+  smaller — so `t² = df·(1 − x)/x` and `F = d₂x/(d₁(1 − x))` keep their digits when `x` is near 0 or near 1. The relative
+  error against 50-digit references (mpmath) is below 6·10⁻¹⁴ for `p` from 10⁻³⁰⁰ to 1 − 10⁻¹⁴ and a shape of 0.5 to 10³
+  (4·10⁻¹⁴ at `t(0.5)`, `p = 10⁻¹⁰⁰`, where the quantile is 10¹⁹⁹), and 2·10⁻¹³ for `χ²` to 10⁶ degrees of freedom; where the
+  previous code was right the new code is no worse. Past a shape of 10³ the bound is the incomplete beta function's
+  own — `1 − x` is a rounded double — about `3·10⁻¹⁷ · shape`: 6·10⁻¹² for `t(10⁶)`, 7·10⁻¹⁰ for `F(3, 10⁸)` and 2·10⁻⁷
+  for `t(10¹⁰)` at `p = 0.975` (1·10⁻⁷ before; for `p` from 0.1 to 0.9 it fell from 10⁻⁸–3·10⁻⁶ to 3·10⁻¹⁵). A quantile beyond the largest double is ±∞. `t_distribution_quantile(0.5, df)` is
+  still exactly 0, and the odd symmetry holds to the bit where `1 − p` is exact.
 
 ## [UNumflow 0.8.2] - 2026-11-09
 

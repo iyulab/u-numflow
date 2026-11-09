@@ -482,6 +482,12 @@ pub fn regularized_incomplete_beta(x: f64, a: f64, b: f64) -> f64 {
         return 1.0;
     }
 
+    beta_cdf_pair(x, 1.0 - x, a, b)
+}
+
+/// `I_x(a, b)` for `x` and its complement `y = 1 - x` given separately (the
+/// caller has them exactly, which `1 - x` of a rounded `x` is not).
+fn beta_cdf_pair(x: f64, y: f64, a: f64, b: f64) -> f64 {
     // Shapes this large: the prefix below is a difference of terms of order
     // `a ln a`, which rounding leaves with no digit; the distribution is a
     // normal one with a small skew.
@@ -489,7 +495,7 @@ pub fn regularized_incomplete_beta(x: f64, a: f64, b: f64) -> f64 {
         return beta_normal_approximation(x, a, b);
     }
 
-    incomplete_beta_with_complement(x, 1.0 - x, a, b)
+    incomplete_beta_with_complement(x, y, a, b)
 }
 
 /// `I_x(a, b)` given `x` and its complement `y = 1 - x` separately.
@@ -1032,11 +1038,17 @@ pub fn t_distribution_pdf(t: f64, df: f64) -> f64 {
 /// Given a probability `p ∈ (0, 1)`, returns `t` such that `P(T ≤ t) = p`.
 ///
 /// # Algorithm
-/// Newton-Raphson iteration with initial guess from inverse normal CDF.
-/// Converges in 5–15 iterations for typical inputs.
+/// The two-sided tail `u = 2·min(p, 1 − p)` (both exact) gives
+/// `I_x(df/2, ½) = u` for `x = df / (df + t²)`; [`inverse_regularized_incomplete_beta`]
+/// solves it in the logarithm of whichever of `x` and `1 − x` is the smaller, and
+/// `t² = df · (1 − x) / x`. The result keeps its relative precision for a
+/// probability as small as 10⁻³⁰⁰ and a `p` within rounding of ½, at any `df`:
+/// a Newton iteration on the CDF from the normal quantile does neither
+/// (a Cauchy `t(1)` at `p = 10⁻³⁰` was off by a factor of 2).
 ///
 /// # Returns
-/// - `f64::NAN` if `p` is outside `(0, 1)` or df ≤ 0.
+/// - `f64::NAN` if `p` is outside `(0, 1)`, `df ≤ 0`, or an input is NaN.
+/// - `±∞` for a quantile beyond the largest double.
 ///
 /// # Examples
 /// ```
@@ -1045,32 +1057,27 @@ pub fn t_distribution_pdf(t: f64, df: f64) -> f64 {
 /// assert!(t_distribution_quantile(0.5, 10.0).abs() < 1e-10);
 /// // df=∞ → normal quantile
 /// assert!((t_distribution_quantile(0.975, 10000.0) - 1.96).abs() < 0.01);
+/// // A Cauchy has the closed form tan(π(p − ½)): t(1) at p = 10⁻³⁰ is −1/(π·p)
+/// let t = t_distribution_quantile(1e-30, 1.0);
+/// assert!((t / -3.183098861837907e29 - 1.0).abs() < 1e-13);
 /// ```
 pub fn t_distribution_quantile(p: f64, df: f64) -> f64 {
     if p.is_nan() || df.is_nan() || df <= 0.0 || p <= 0.0 || p >= 1.0 {
         return f64::NAN;
     }
-    if (p - 0.5).abs() < 1e-15 {
+    if p == 0.5 {
         return 0.0;
     }
-
-    // Initial guess from normal approximation
-    let mut t = inverse_normal_cdf(p);
-
-    // Newton-Raphson refinement
-    for _ in 0..50 {
-        let cdf = t_distribution_cdf(t, df);
-        let pdf = t_distribution_pdf(t, df);
-        if pdf.abs() < 1e-300 {
-            break;
-        }
-        let delta = (cdf - p) / pdf;
-        t -= delta;
-        if delta.abs() < 1e-12 * t.abs().max(1.0) {
-            break;
-        }
+    // 1 − p is exact for p ≥ ½, so the smaller tail is never a rounding.
+    let (tail, negative) = if p < 0.5 { (p, true) } else { (1.0 - p, false) };
+    let two_sided = 2.0 * tail;
+    let root = inverse_beta_tails(two_sided, 1.0 - two_sided, df / 2.0, 0.5);
+    let magnitude = df.sqrt() * root.sqrt_y_over_x();
+    if negative {
+        -magnitude
+    } else {
+        magnitude
     }
-    t
 }
 
 // ============================================================================
@@ -1145,10 +1152,24 @@ pub fn f_distribution_sf(x: f64, df1: f64, df2: f64) -> f64 {
 /// Given a probability `p ∈ (0, 1)`, returns `x` such that `P(X ≤ x) = p`.
 ///
 /// # Algorithm
-/// Bisection method on `[0, upper_bound]`. Robust for all parameter ranges.
+/// `X = (d2/d1) · B / (1 − B)` for `B ~ Beta(d1/2, d2/2)`:
+/// [`inverse_regularized_incomplete_beta`] solves for `B` and `1 − B` together,
+/// in the logarithm of the smaller, so the result keeps its relative precision
+/// for a probability of 10⁻³⁰⁰ and for an upper tail of 10⁻¹⁴ given as
+/// `p = 1 − 10⁻¹⁴` (bisection on the CDF was off by a factor of 400 at
+/// `F(2, 5)`, `p = 10⁻¹⁰`).
 ///
 /// # Returns
 /// - `f64::NAN` if `p` is outside `(0, 1)` or df1/df2 ≤ 0.
+/// - `+∞` for a quantile beyond the largest double.
+///
+/// # Examples
+/// ```
+/// use u_numflow::special::f_distribution_quantile;
+/// // F(2, d2) has the closed form (d2/2)·((1 − p)^(−2/d2) − 1); here d2 = 4: 2·((1 − p)^(−½) − 1)
+/// let x = f_distribution_quantile(0.75, 2.0, 4.0);
+/// assert!((x - 2.0).abs() < 1e-13);
+/// ```
 pub fn f_distribution_quantile(p: f64, df1: f64, df2: f64) -> f64 {
     if p.is_nan()
         || df1.is_nan()
@@ -1160,30 +1181,8 @@ pub fn f_distribution_quantile(p: f64, df1: f64, df2: f64) -> f64 {
     {
         return f64::NAN;
     }
-
-    // Find upper bound where CDF > p
-    let mut hi = 2.0;
-    while f_distribution_cdf(hi, df1, df2) < p {
-        hi *= 2.0;
-        if hi > 1e15 {
-            return hi;
-        }
-    }
-    let mut lo = 0.0f64;
-
-    // Bisection
-    for _ in 0..200 {
-        let mid = (lo + hi) / 2.0;
-        if hi - lo < 1e-12 * mid.max(1e-15) {
-            break;
-        }
-        if f_distribution_cdf(mid, df1, df2) < p {
-            lo = mid;
-        } else {
-            hi = mid;
-        }
-    }
-    (lo + hi) / 2.0
+    let root = inverse_beta_tails(p, 1.0 - p, df1 / 2.0, df2 / 2.0);
+    (df2 / df1) * root.x_over_y()
 }
 
 // ============================================================================
@@ -1252,13 +1251,16 @@ pub fn chi_squared_sf(x: f64, k: f64) -> f64 {
 /// for `X ~ χ²(k)`.
 ///
 /// # Algorithm
-/// Bisection on [`chi_squared_cdf`], bracketed by doubling from `max(k, 1)`.
-/// Exact to the tolerance of the incomplete gamma function, unlike the
-/// Wilson–Hilferty cube-root approximation, which is off by about 2–3 % for
-/// one or two degrees of freedom in the tails.
+/// `2 · `[`inverse_regularized_lower_gamma`]`(k/2, p)`: Newton's method in
+/// `ln x` on the logarithm of the incomplete gamma function, so a quantile far
+/// below 1 (`p = 10⁻³⁰`, `k = 1`) keeps its relative precision. Exact to the
+/// tolerance of the incomplete gamma function, unlike the Wilson–Hilferty
+/// cube-root approximation, which is off by about 2–3 % for one or two
+/// degrees of freedom in the tails.
 ///
 /// # Returns
 /// - `f64::NAN` if `p` is outside `(0, 1)`, `k ≤ 0`, or inputs are NaN.
+/// - `+∞` for a quantile beyond the largest double.
 ///
 /// # Examples
 /// ```
@@ -1266,33 +1268,330 @@ pub fn chi_squared_sf(x: f64, k: f64) -> f64 {
 /// // NIST/SEMATECH table: χ²(0.95; 1) = 3.841, χ²(0.975; 2) = 7.378
 /// assert!((chi_squared_quantile(0.95, 1.0) - 3.8415).abs() < 1e-3);
 /// assert!((chi_squared_quantile(0.975, 2.0) - 7.3778).abs() < 1e-3);
+/// // k = 2 is an exponential with mean 2: x = −2·ln(1 − p), here p = 10⁻³⁰
+/// assert!((chi_squared_quantile(1e-30, 2.0) / 2e-30 - 1.0).abs() < 1e-13);
 /// ```
 pub fn chi_squared_quantile(p: f64, k: f64) -> f64 {
     if p.is_nan() || k.is_nan() || k <= 0.0 || p <= 0.0 || p >= 1.0 {
         return f64::NAN;
     }
+    2.0 * inverse_gamma_tails(k / 2.0, p, 1.0 - p)
+}
 
-    let mut hi = k.max(1.0);
-    while chi_squared_cdf(hi, k) < p {
-        hi *= 2.0;
-        if hi > 1e15 {
-            return hi;
-        }
-    }
-    let mut lo = 0.0f64;
+// ============================================================================
+// Inverse of the regularized incomplete gamma and beta functions
+// ============================================================================
 
+/// The solution `y` of `h(y) = target` for an increasing `h` that returns its
+/// own slope, by Newton steps kept inside a shrinking bracket `[lo, hi]` and
+/// replaced by a bisection when a step leaves it or the slope is unusable.
+///
+/// The inverse solvers use `y = ln x` and `h = ln P` (or `−ln Q`): a tail
+/// probability is a power of `x` for small `x`, so in the logarithm it is nearly
+/// a straight line and Newton converges from any start — where a step in `x`
+/// with an absolute floor (1e-15) or an absolute width (1e-14) cannot name a
+/// quantile of 1e-50 at all.
+pub(crate) fn solve_in_log(
+    target: f64,
+    start: f64,
+    lo: f64,
+    hi: f64,
+    h: impl Fn(f64) -> (f64, f64),
+) -> f64 {
+    let (mut lo, mut hi) = (lo, hi);
+    let mut y = start.clamp(lo, hi);
     for _ in 0..200 {
-        let mid = (lo + hi) / 2.0;
-        if hi - lo < 1e-13 * mid.max(1e-300) {
-            break;
+        let (value, slope) = h(y);
+        let miss = value - target;
+        if miss == 0.0 {
+            return y;
         }
-        if chi_squared_cdf(mid, k) < p {
-            lo = mid;
+        if miss < 0.0 || miss.is_nan() {
+            lo = y;
         } else {
-            hi = mid;
+            hi = y;
+        }
+        let mut next = y - miss / slope;
+        if !(slope > 0.0 && slope.is_finite() && next > lo && next < hi) {
+            next = 0.5 * (lo + hi);
+        }
+        if (next - y).abs() <= 2.0 * f64::EPSILON * next.abs().max(1.0)
+            || hi - lo <= f64::EPSILON * next.abs().max(1.0)
+        {
+            return next;
+        }
+        y = next;
+    }
+    y
+}
+
+/// The smallest `ln x` an inverse solver looks for: `ln` of the least positive
+/// double. A quantile below it is reported as that double.
+pub(crate) const LN_LEAST_POSITIVE: f64 = -744.440_071_921_381_3;
+
+/// `ln ½`.
+const LN_HALF: f64 = -std::f64::consts::LN_2;
+
+/// The `x` with `P(a, x) = p` (and `Q(a, x) = q`) for tails `p + q = 1` that
+/// the caller holds exactly, `0 < p, q < 1`. The smaller tail is solved for, so
+/// an upper tail of 1e-14 given as `q` is not a rounding of `1 − p`.
+pub(crate) fn inverse_gamma_tails(a: f64, p: f64, q: f64) -> f64 {
+    let lower = p <= q;
+    let target = if lower { p.ln() } else { -q.ln() };
+
+    // Wilson-Hilferty for a shape of 1 and up, where it names a positive value;
+    // otherwise the leading term of the series (lower tail) or of the
+    // asymptotic expansion of the upper tail.
+    let v = 1.0 / (9.0 * a);
+    let z = if lower {
+        inverse_normal_cdf(p)
+    } else {
+        -inverse_normal_cdf(q)
+    };
+    let wilson = a * (1.0 - v + z * v.sqrt()).powi(3);
+    let start = if a >= 1.0 && wilson.is_finite() && wilson > 0.0 {
+        wilson.ln()
+    } else if lower {
+        (p.ln() + ln_gamma(a + 1.0)) / a
+    } else {
+        let l = -q.ln();
+        (l + (a - 1.0) * l.max(1.0).ln()).max(0.5).ln()
+    };
+
+    let y = solve_in_log(target, start, LN_LEAST_POSITIVE, f64::MAX.ln(), |y| {
+        let x = y.exp();
+        // x·f(x) = exp(ln(x^a e^−x / Γ(a))) is the slope of P and −Q in ln x.
+        let kernel = ln_gamma_kernel(a, x);
+        if lower {
+            let value = regularized_lower_gamma(a, x).ln();
+            (value, (kernel - value).exp())
+        } else {
+            let value = -regularized_upper_gamma(a, x).ln();
+            (value, (kernel + value).exp())
+        }
+    });
+    y.exp()
+}
+
+/// Inverse of the regularized lower incomplete gamma function: the `x` with
+/// `P(a, x) = p` ([`regularized_lower_gamma`]).
+///
+/// This is the quantile of a Gamma(shape `a`, scale 1) variable, and
+/// `2 · inverse_regularized_lower_gamma(k/2, p)` is the chi-squared quantile.
+///
+/// # Algorithm
+/// Newton's method on `ln P` in `ln x`, kept inside a bracket and replaced by a
+/// bisection where a step leaves it. The relative error of `x` is the incomplete
+/// gamma function's own, for `p` down to 10⁻³⁰⁰ (a root below the least positive
+/// double, 5·10⁻³²⁴, is reported as that double, one above the largest double as
+/// the largest double). For an upper tail much smaller than `p`'s own rounding
+/// use [`inverse_regularized_upper_gamma`].
+///
+/// # Returns
+/// - `0` for `p = 0`, `+∞` for `p = 1`.
+/// - `f64::NAN` if `a ≤ 0`, `p ∉ [0, 1]` or an input is NaN.
+///
+/// # Examples
+/// ```
+/// use u_numflow::special::{inverse_regularized_lower_gamma, regularized_lower_gamma};
+/// // a = 1 is the unit exponential: P(1, x) = 1 − e^−x, so x = −ln(1 − p)
+/// let x = inverse_regularized_lower_gamma(1.0, 1e-30);
+/// assert!((x / 1e-30 - 1.0).abs() < 1e-13);
+/// // a round trip
+/// let x = inverse_regularized_lower_gamma(3.5, 0.2);
+/// assert!((regularized_lower_gamma(3.5, x) - 0.2).abs() < 1e-14);
+/// ```
+pub fn inverse_regularized_lower_gamma(a: f64, p: f64) -> f64 {
+    if (a.is_nan() || a <= 0.0) || !(0.0..=1.0).contains(&p) {
+        return f64::NAN;
+    }
+    if p == 0.0 {
+        return 0.0;
+    }
+    if p == 1.0 {
+        return f64::INFINITY;
+    }
+    inverse_gamma_tails(a, p, 1.0 - p)
+}
+
+/// Inverse of the regularized upper incomplete gamma function: the `x` with
+/// `Q(a, x) = q` ([`regularized_upper_gamma`]).
+///
+/// The upper tail is taken as given, not as `1 − p`: a `q` of 10⁻¹⁴ or 10⁻²⁰⁰
+/// (the p-value of a chi-squared test: `x = 2 · inverse_regularized_upper_gamma(k/2, p_value)`)
+/// keeps every digit, where `inverse_regularized_lower_gamma(a, 1 − q)` has none
+/// below `q ≈ 10⁻¹⁶`.
+///
+/// # Algorithm
+/// As [`inverse_regularized_lower_gamma`], on `−ln Q`.
+///
+/// # Returns
+/// - `+∞` for `q = 0`, `0` for `q = 1`.
+/// - `f64::NAN` if `a ≤ 0`, `q ∉ [0, 1]` or an input is NaN.
+///
+/// # Examples
+/// ```
+/// use u_numflow::special::{inverse_regularized_upper_gamma, regularized_upper_gamma};
+/// // a = 1: Q(1, x) = e^−x, so x = −ln q
+/// let x = inverse_regularized_upper_gamma(1.0, 1e-200);
+/// assert!((x / (200.0 * std::f64::consts::LN_10) - 1.0).abs() < 1e-14);
+/// let x = inverse_regularized_upper_gamma(2.5, 1e-14);
+/// assert!((regularized_upper_gamma(2.5, x) / 1e-14 - 1.0).abs() < 1e-12);
+/// ```
+pub fn inverse_regularized_upper_gamma(a: f64, q: f64) -> f64 {
+    if (a.is_nan() || a <= 0.0) || !(0.0..=1.0).contains(&q) {
+        return f64::NAN;
+    }
+    if q == 0.0 {
+        return f64::INFINITY;
+    }
+    if q == 1.0 {
+        return 0.0;
+    }
+    inverse_gamma_tails(a, 1.0 - q, q)
+}
+
+/// The `ln x` of the `x ≤ ½` with `I_x(a, b) = p` (and `1 − I_x(a, b) = q`) for
+/// tails `p + q = 1` held exactly, `0 < p, q < 1`. The caller has established
+/// that the root is at most ½. The smaller tail is solved for, in `ln x`.
+fn inverse_beta_small_side(p: f64, q: f64, a: f64, b: f64) -> f64 {
+    let lower = p <= q;
+    let ln_b = ln_beta(a, b);
+    let target = if lower { p.ln() } else { -q.ln() };
+    // I_x ≈ x^a / (a B(a, b)) for small x: the line `ln I = a·y − ln(a B)`.
+    let line = (p.ln() + a.ln() + ln_b) / a;
+    // The root is returned as a logarithm, so it may lie below the least positive
+    // double: a shape of ½ and a probability of 1e-100 name an `x` of 1e-400. There
+    // the leading term is the whole function (the next one is smaller by a factor
+    // of `x`), so the line is the answer.
+    if lower && line < LN_LEAST_POSITIVE {
+        return line;
+    }
+    let start = if lower {
+        line.min(LN_HALF)
+    } else {
+        LN_HALF - 0.5
+    };
+    solve_in_log(target, start, LN_LEAST_POSITIVE, LN_HALF, |y| {
+        let x = y.exp();
+        // x·f(x) is the slope of I and of −ln(1 − I) in ln x, up to the tail.
+        let ln_x_f = a * y + (b - 1.0) * (-x).ln_1p() - ln_b;
+        if lower {
+            let value = beta_cdf_pair(x, 1.0 - x, a, b).ln();
+            (value, (ln_x_f - value).exp())
+        } else {
+            // The upper tail is `I_y(b, a)`, and is handed `x` itself: a `y`
+            // rounded from `1 − x` has lost the digits of a small `x`.
+            let value = -beta_cdf_pair(1.0 - x, x, b, a).ln();
+            (value, (ln_x_f + value).exp())
+        }
+    })
+}
+
+/// The root of `I_x(a, b) = p`, as `x` and `y = 1 − x` with the logarithm of each.
+pub(crate) struct BetaRoot {
+    x: f64,
+    y: f64,
+    ln_x: f64,
+    ln_y: f64,
+}
+
+impl BetaRoot {
+    /// Both parts are normal doubles: a quotient formed from them is exact to
+    /// rounding. Below that a subnormal has lost digits and the quotient is
+    /// formed from the logarithms.
+    fn both_normal(&self) -> bool {
+        self.x >= f64::MIN_POSITIVE && self.y >= f64::MIN_POSITIVE
+    }
+
+    /// `x / y`.
+    pub(crate) fn x_over_y(&self) -> f64 {
+        if self.both_normal() {
+            self.x / self.y
+        } else {
+            (self.ln_x - self.ln_y).exp()
         }
     }
-    (lo + hi) / 2.0
+
+    /// `√(y / x)`.
+    pub(crate) fn sqrt_y_over_x(&self) -> f64 {
+        if self.both_normal() {
+            (self.y / self.x).sqrt()
+        } else {
+            (0.5 * (self.ln_y - self.ln_x)).exp()
+        }
+    }
+}
+
+/// The root of `I_x(a, b) = p` for tails `p + q = 1` held exactly,
+/// `0 < p, q < 1`: the smaller of `x` and `1 − x` (the one a quantile needs to
+/// tell apart from 0) is the one solved for, so both come back with their
+/// relative precision. Student's t and the F ratio are `(1 − x)/x` and `x/(1 − x)`.
+pub(crate) fn inverse_beta_tails(p: f64, q: f64, a: f64, b: f64) -> BetaRoot {
+    // The root is at most ½ exactly when P(½) ≥ p.
+    if p <= regularized_incomplete_beta(0.5, a, b) {
+        let ln_x = inverse_beta_small_side(p, q, a, b);
+        let x = ln_x.exp().min(0.5);
+        BetaRoot {
+            x,
+            y: 1.0 - x,
+            ln_x,
+            ln_y: (-x).ln_1p(),
+        }
+    } else {
+        let ln_y = inverse_beta_small_side(q, p, b, a);
+        let y = ln_y.exp().min(0.5);
+        BetaRoot {
+            x: 1.0 - y,
+            y,
+            ln_x: (-y).ln_1p(),
+            ln_y,
+        }
+    }
+}
+
+/// Inverse of the regularized incomplete beta function: the `x ∈ [0, 1]` with
+/// `I_x(a, b) = p` ([`regularized_incomplete_beta`]).
+///
+/// This is the quantile of a Beta(`a`, `b`) variable, and the building block of
+/// the Student's t and F quantiles.
+///
+/// # Algorithm
+/// Newton's method on `ln I` in `ln x`, kept inside a bracket and replaced by a
+/// bisection where a step leaves it — in the logarithm of whichever of `x` and
+/// `1 − x` is the smaller, against whichever of `p` and `1 − p` is the smaller.
+/// The relative error of a root below ½ is the incomplete beta function's own,
+/// from `x = 0.3` down to `x = 10⁻⁵⁰` and past it (a root below the least positive
+/// double, 5·10⁻³²⁴, comes back as 0). A root within 10⁻¹⁶ of 1 comes back as a
+/// double near 1 with that absolute error: a caller that needs `1 − x`
+/// (the t and F quantiles do) uses the mirror identity
+/// `inverse_regularized_incomplete_beta(1 − p, b, a) = 1 − x`, with `1 − p`
+/// held exactly.
+///
+/// # Returns
+/// - `0` for `p = 0`, `1` for `p = 1`.
+/// - `f64::NAN` if `a ≤ 0`, `b ≤ 0`, `p ∉ [0, 1]` or an input is NaN.
+///
+/// # Examples
+/// ```
+/// use u_numflow::special::{inverse_regularized_incomplete_beta, regularized_incomplete_beta};
+/// // b = 1: I_x(a, 1) = x^a, so x = p^(1/a)
+/// let x = inverse_regularized_incomplete_beta(1e-30, 2.0, 1.0);
+/// assert!((x / 1e-15 - 1.0).abs() < 1e-13);
+/// let x = inverse_regularized_incomplete_beta(0.9, 3.0, 4.5);
+/// assert!((regularized_incomplete_beta(x, 3.0, 4.5) - 0.9).abs() < 1e-14);
+/// ```
+pub fn inverse_regularized_incomplete_beta(p: f64, a: f64, b: f64) -> f64 {
+    if (a.is_nan() || a <= 0.0) || (b.is_nan() || b <= 0.0) || !(0.0..=1.0).contains(&p) {
+        return f64::NAN;
+    }
+    if p == 0.0 {
+        return 0.0;
+    }
+    if p == 1.0 {
+        return 1.0;
+    }
+    inverse_beta_tails(p, 1.0 - p, a, b).x
 }
 
 // ============================================================================
