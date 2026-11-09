@@ -31,6 +31,16 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
   `y = 37` although it is a number to `y ≈ 745`. They use `expm1`, `ln_1p` and `exp(−y)` directly now: 2·10⁻¹⁶ for the
   CDF and quantile over `y` from 10⁻¹⁴ to 740 (and `p` from 10⁻¹⁵), and 4·10⁻¹⁴ at the far end of the survival function
   (`y ≈ 500`, where the rounding of `y` itself is multiplied by `y`).
+- The quantiles of `GammaDistribution`, `ChiSquared`, `BetaDistribution` and `Pert` were wrong for a small probability:
+  the gamma one never returned less than 1e-15 (a gamma(0.5) at `p = 10⁻¹⁰` has its quantile at 8·10⁻²¹), and the beta one
+  bisected to an absolute width of 1e-14, so a quantile of 8·10⁻⁹ had 6 digits (`p = 10⁻¹⁵`, a PERT 6·10⁻⁴ off) and one
+  of 10⁻³⁰ was off by a factor. Both solve for `ln x` now, by Newton steps on `ln P` kept in a bracket — a tail probability
+  is nearly a power of `x`, so in the logarithm it is a straight line — and take a `p` above ½ as the tail `1 − p`, which is
+  exact: the relative error against 40-digit references is below 4·10⁻¹⁴ for `p` from 10⁻³⁰⁰ to 1 − 10⁻¹⁴ (shapes 0.1 to
+  100), and a quantile below the least positive double is reported as that double. `ChiSquared::quantile` no longer returns
+  infinity for a `p` within 10⁻¹⁵ of 1. The free functions `t_distribution_quantile`, `f_distribution_quantile` and
+  `chi_squared_quantile` are unchanged: their relative error is below 4·10⁻¹⁰ for `p` from 10⁻⁶ to 1 − 10⁻⁶ but they
+  fail for `p` below about 10⁻¹⁰.
 
 ## [UNumflow 0.8.2] - 2026-11-09
 

@@ -891,6 +891,47 @@ impl Exponential {
     }
 }
 
+/// The solution `y` of `h(y) = target` for an increasing `h` that returns its
+/// own slope, by Newton steps kept inside a shrinking bracket `[lo, hi]` and
+/// replaced by a bisection when a step leaves it or the slope is unusable.
+///
+/// The quantile solvers use `y = ln x` and `h = ln P` (or `−ln Q`): a tail
+/// probability is a power of `x` for small `x`, so in the logarithm it is nearly
+/// a straight line and Newton converges from any start — where a step in `x`
+/// with an absolute floor (1e-15) or an absolute width (1e-14) cannot name a
+/// quantile of 1e-50 at all.
+fn solve_in_log(target: f64, start: f64, lo: f64, hi: f64, h: impl Fn(f64) -> (f64, f64)) -> f64 {
+    let (mut lo, mut hi) = (lo, hi);
+    let mut y = start.clamp(lo, hi);
+    for _ in 0..200 {
+        let (value, slope) = h(y);
+        let miss = value - target;
+        if miss == 0.0 {
+            return y;
+        }
+        if miss < 0.0 || miss.is_nan() {
+            lo = y;
+        } else {
+            hi = y;
+        }
+        let mut next = y - miss / slope;
+        if !(slope > 0.0 && slope.is_finite() && next > lo && next < hi) {
+            next = 0.5 * (lo + hi);
+        }
+        if (next - y).abs() <= 2.0 * f64::EPSILON * next.abs().max(1.0)
+            || hi - lo <= f64::EPSILON * next.abs().max(1.0)
+        {
+            return next;
+        }
+        y = next;
+    }
+    y
+}
+
+/// The smallest `ln x` a quantile solver looks for: `ln` of the least
+/// positive double. A quantile below it is reported as that double.
+const LN_LEAST_POSITIVE: f64 = -744.440_071_921_381_3;
+
 // ============================================================================
 // Gamma Distribution
 // ============================================================================
@@ -1009,7 +1050,13 @@ impl GammaDistribution {
         special::regularized_lower_gamma(self.shape, z)
     }
 
-    /// Quantile (inverse CDF) via Newton-Raphson iteration.
+    /// Quantile (inverse CDF).
+    ///
+    /// Newton's method on `ln P` (or `−ln Q` for `p > ½`) in `ln x`, kept in a
+    /// bracket: accurate to the CDF's own digits at any `p`, down to the
+    /// quantiles that sit below 10⁻³⁰⁰ (reported as the least positive double)
+    /// — the tail is solved for from `1 − p`, which is exact for `p ≥ ½`, so a
+    /// `p` of `1 − 10⁻¹⁴` is a tail of 10⁻¹⁴ and not a rounding of it.
     ///
     /// Returns `None` if p is not in [0, 1].
     pub fn quantile(&self, p: f64) -> Option<f64> {
@@ -1023,27 +1070,38 @@ impl GammaDistribution {
             return Some(f64::INFINITY);
         }
 
-        // Initial guess: Wilson-Hilferty approximation
-        let z = crate::special::inverse_normal_cdf(p);
-        let v = 1.0 / (9.0 * self.shape);
-        let chi2_approx = self.shape * (1.0 - v + z * v.sqrt()).powi(3).max(0.001);
-        let mut x = chi2_approx / self.rate;
+        let a = self.shape;
+        let lower = p <= 0.5;
+        let tail = if lower { p } else { 1.0 - p };
+        let target = if lower { tail.ln() } else { -tail.ln() };
 
-        // Newton-Raphson refinement
-        for _ in 0..50 {
-            let f = self.cdf(x) - p;
-            let fp = self.pdf(x);
-            if fp < 1e-300 {
-                break;
-            }
-            let step = f / fp;
-            x = (x - step).max(1e-15);
-            if step.abs() < 1e-12 * x {
-                break;
-            }
-        }
+        // Wilson-Hilferty for a shape of 1 and up, where it names a positive
+        // value; otherwise the leading term of the series (lower tail) or of the
+        // asymptotic expansion of the upper tail.
+        let v = 1.0 / (9.0 * a);
+        let wilson = a * (1.0 - v + special::inverse_normal_cdf(p) * v.sqrt()).powi(3);
+        let start = if a >= 1.0 && wilson.is_finite() && wilson > 0.0 {
+            wilson.ln()
+        } else if lower {
+            (tail.ln() + special::ln_gamma(a + 1.0)) / a
+        } else {
+            let l = -tail.ln();
+            (l + (a - 1.0) * l.max(1.0).ln()).max(0.5).ln()
+        };
 
-        Some(x)
+        let y = solve_in_log(target, start, LN_LEAST_POSITIVE, f64::MAX.ln(), |y| {
+            let x = y.exp();
+            // x·f(x) = exp(ln(x^a e^−x / Γ(a))) is the slope of P and −Q in ln x.
+            let kernel = special::ln_gamma_kernel(a, x);
+            if lower {
+                let value = special::regularized_lower_gamma(a, x).ln();
+                (value, (kernel - value).exp())
+            } else {
+                let value = -special::regularized_upper_gamma(a, x).ln();
+                (value, (kernel + value).exp())
+            }
+        });
+        Some(y.exp() / self.rate)
     }
 }
 
@@ -1144,8 +1202,12 @@ impl BetaDistribution {
 
     /// Evaluates the quantile (inverse CDF) at probability p ∈ [0, 1].
     ///
-    /// Uses Newton-Raphson iteration with an initial approximation
-    /// from the normal approximation to the beta distribution.
+    /// Newton's method on `ln I` in `ln x` (the same solver as the gamma
+    /// quantile), accurate to the CDF's own digits for a quantile of any size —
+    /// 10⁻⁵⁰ as well as 0.3. A `p` above ½ is the lower tail `1 − p` (exact) of
+    /// the mirrored distribution Beta(β, α), subtracted from 1.
+    ///
+    /// Returns `None` if `p` is outside `[0, 1]`.
     pub fn quantile(&self, p: f64) -> Option<f64> {
         if !(0.0..=1.0).contains(&p) {
             return None;
@@ -1153,27 +1215,33 @@ impl BetaDistribution {
         if p == 0.0 {
             return Some(0.0);
         }
-        if (p - 1.0).abs() < 1e-15 {
+        if p == 1.0 {
             return Some(1.0);
         }
-
-        // Bisection method for robust convergence on [0, 1]
-        let mut lo = 0.0_f64;
-        let mut hi = 1.0_f64;
-
-        for _ in 0..100 {
-            let mid = (lo + hi) / 2.0;
-            if hi - lo < 1e-14 {
-                break;
-            }
-            if self.cdf(mid) < p {
-                lo = mid;
-            } else {
-                hi = mid;
-            }
+        if p > 0.5 {
+            let mirrored = BetaDistribution {
+                alpha: self.beta,
+                beta: self.alpha,
+            };
+            return Some(1.0 - mirrored.lower_quantile(1.0 - p));
         }
+        Some(self.lower_quantile(p))
+    }
 
-        Some((lo + hi) / 2.0)
+    /// The quantile for `0 < p ≤ ½`, solved in `ln x`.
+    fn lower_quantile(&self, p: f64) -> f64 {
+        let (a, b) = (self.alpha, self.beta);
+        let ln_b = special::ln_beta(a, b);
+        // I_x ≈ x^α / (α B(α, β)) for small x: the line `ln I = α·y − ln(α B)`.
+        let start = ((p.ln() + a.ln() + ln_b) / a).min(-0.01);
+        let y = solve_in_log(p.ln(), start, LN_LEAST_POSITIVE, 0.0, |y| {
+            let x = y.exp();
+            let value = special::regularized_incomplete_beta(x, a, b).ln();
+            // x·f(x) is the slope of I in ln x.
+            let ln_x_f = a * y + (b - 1.0) * (-x).ln_1p() - ln_b;
+            (value, (ln_x_f - value).exp())
+        });
+        y.exp().min(1.0)
     }
 }
 
@@ -1266,7 +1334,7 @@ impl ChiSquared {
         if p == 0.0 {
             return Some(0.0);
         }
-        if (p - 1.0).abs() < 1e-15 {
+        if p == 1.0 {
             return Some(f64::INFINITY);
         }
 
@@ -1286,6 +1354,114 @@ impl ChiSquared {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Gamma, chi-squared, beta and PERT quantiles at small and large `p`
+    /// against 50-digit references. The gamma quantile floored at 1e-15 (a
+    /// gamma(0.5) at `p = 10⁻¹⁰`, whose quantile is 8e-21, came back as 1e-15)
+    /// and the beta one stopped bisecting at an absolute width of 1e-14 (a
+    /// quantile of 8e-9 was good to 6 digits, one of 10⁻¹²¹ was not found).
+    #[test]
+    #[allow(clippy::excessive_precision)] // the oracle's digits, not a double's
+    fn gamma_and_beta_quantiles_are_exact_at_any_probability() {
+        let g05 = GammaDistribution::new(0.5, 1.0).unwrap();
+        let g2 = GammaDistribution::new(2.0, 1.0).unwrap();
+        let g100 = GammaDistribution::new(100.0, 1.0).unwrap();
+        let c3 = ChiSquared::new(3.0).unwrap();
+        let b25 = BetaDistribution::new(2.0, 5.0).unwrap();
+        let b013 = BetaDistribution::new(0.1, 3.0).unwrap();
+        let cases = [
+            (
+                "gamma(0.5) p=1e-10",
+                g05.quantile(1e-10).unwrap(),
+                7.8539816339744830962e-21,
+            ),
+            (
+                "gamma(2) p=1e-30",
+                g2.quantile(1e-30).unwrap(),
+                1.4142135623730957155e-15,
+            ),
+            (
+                "gamma(2) p=0.3",
+                g2.quantile(0.3).unwrap(),
+                1.0973492107034916496,
+            ),
+            (
+                "gamma(100) p=1e-10",
+                g100.quantile(1e-10).unwrap(),
+                48.883092053795954367,
+            ),
+            // 1 − 1e-10 as a double: the tail 1.00000008274037e-10 is exact.
+            (
+                "gamma(2) p=1-1e-10",
+                g2.quantile(1.0 - 1e-10).unwrap(),
+                26.333981519648540248,
+            ),
+            (
+                "chi2(3) p=1e-30",
+                c3.quantile(1e-30).unwrap(),
+                2.4179879310247044611e-20,
+            ),
+            (
+                "beta(2,5) p=1e-15",
+                b25.quantile(1e-15).unwrap(),
+                8.164965898166150819e-9,
+            ),
+            (
+                "beta(2,5) p=1e-6",
+                b25.quantile(1e-6).unwrap(),
+                0.00025828782935406360215,
+            ),
+            (
+                "beta(0.1,3) p=1e-12",
+                b013.quantile(1e-12).unwrap(),
+                2.3669013519449049727e-121,
+            ),
+        ];
+        for (name, got, want) in cases {
+            let rel = (got / want - 1.0).abs();
+            assert!(rel < 1e-12, "{name}: {got:e} vs {want:e} ({rel:e})");
+        }
+    }
+
+    /// `cdf(quantile(p)) = p` to the CDF's own digits over twenty decades of
+    /// `p` (the lower half; a quantile below the least positive double has no
+    /// double to land on) and every shape, and the quantile is monotone in `p`.
+    #[test]
+    fn gamma_and_beta_quantiles_round_trip_over_twenty_decades() {
+        let ps = [
+            1e-250, 1e-100, 1e-40, 1e-20, 1e-10, 1e-6, 1e-3, 0.05, 0.3, 0.5,
+        ];
+        for shape in [0.5, 1.0, 2.0, 10.0, 100.0] {
+            let g = GammaDistribution::new(shape, 2.0).unwrap();
+            let mut last = 0.0;
+            for p in ps {
+                let q = g.quantile(p).unwrap();
+                if q > 1e-300 {
+                    assert!((g.cdf(q) / p - 1.0).abs() < 1e-9, "gamma({shape}) p={p}");
+                }
+                assert!(q >= last, "gamma({shape}) not monotone at {p}");
+                last = q;
+            }
+        }
+        for (a, b) in [
+            (0.5, 0.5),
+            (2.0, 5.0),
+            (10.0, 10.0),
+            (1.0, 100.0),
+            (100.0, 1.0),
+        ] {
+            let d = BetaDistribution::new(a, b).unwrap();
+            let mut last = 0.0;
+            for p in ps {
+                let q = d.quantile(p).unwrap();
+                if q > 1e-300 {
+                    assert!((d.cdf(q) / p - 1.0).abs() < 1e-9, "beta({a},{b}) p={p}");
+                }
+                assert!(q >= last && q < 1.0, "beta({a},{b}) not monotone at {p}");
+                last = q;
+            }
+        }
+    }
 
     /// The exponential and Weibull tails against 50-digit references: a failure
     /// probability of 10⁻¹⁰ read 10⁻⁷ off in relative terms (`1 − exp(−y)`), a
