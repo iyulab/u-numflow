@@ -1053,7 +1053,7 @@ pub fn t_distribution_pdf(t: f64, df: f64) -> f64 {
 /// (a Cauchy `t(1)` at `p = 10⁻³⁰` was off by a factor of 2).
 ///
 /// # Returns
-/// - `f64::NAN` if `p` is outside `(0, 1)`, `df ≤ 0`, or an input is NaN.
+/// - `f64::NAN` if `p` is outside `(0, 1)`, `df ≤ 0` or infinite, or an input is NaN.
 /// - `±∞` for a quantile beyond the largest double.
 ///
 /// # Examples
@@ -1068,7 +1068,7 @@ pub fn t_distribution_pdf(t: f64, df: f64) -> f64 {
 /// assert!((t / -3.183098861837907e29 - 1.0).abs() < 1e-13);
 /// ```
 pub fn t_distribution_quantile(p: f64, df: f64) -> f64 {
-    if p.is_nan() || df.is_nan() || df <= 0.0 || p <= 0.0 || p >= 1.0 {
+    if p.is_nan() || df.is_nan() || df <= 0.0 || df.is_infinite() || p <= 0.0 || p >= 1.0 {
         return f64::NAN;
     }
     if p == 0.5 {
@@ -1166,7 +1166,7 @@ pub fn f_distribution_sf(x: f64, df1: f64, df2: f64) -> f64 {
 /// `F(2, 5)`, `p = 10⁻¹⁰`).
 ///
 /// # Returns
-/// - `f64::NAN` if `p` is outside `(0, 1)` or df1/df2 ≤ 0.
+/// - `f64::NAN` if `p` is outside `(0, 1)` or df1/df2 ≤ 0 or infinite.
 /// - `+∞` for a quantile beyond the largest double.
 ///
 /// # Examples
@@ -1182,6 +1182,8 @@ pub fn f_distribution_quantile(p: f64, df1: f64, df2: f64) -> f64 {
         || df2.is_nan()
         || df1 <= 0.0
         || df2 <= 0.0
+        || df1.is_infinite()
+        || df2.is_infinite()
         || p <= 0.0
         || p >= 1.0
     {
@@ -1265,7 +1267,7 @@ pub fn chi_squared_sf(x: f64, k: f64) -> f64 {
 /// degrees of freedom in the tails.
 ///
 /// # Returns
-/// - `f64::NAN` if `p` is outside `(0, 1)`, `k ≤ 0`, or inputs are NaN.
+/// - `f64::NAN` if `p` is outside `(0, 1)`, `k ≤ 0` or infinite, or inputs are NaN.
 /// - `+∞` for a quantile beyond the largest double.
 ///
 /// # Examples
@@ -1278,7 +1280,7 @@ pub fn chi_squared_sf(x: f64, k: f64) -> f64 {
 /// assert!((chi_squared_quantile(1e-30, 2.0) / 2e-30 - 1.0).abs() < 1e-13);
 /// ```
 pub fn chi_squared_quantile(p: f64, k: f64) -> f64 {
-    if p.is_nan() || k.is_nan() || k <= 0.0 || p <= 0.0 || p >= 1.0 {
+    if p.is_nan() || k.is_nan() || k <= 0.0 || k.is_infinite() || p <= 0.0 || p >= 1.0 {
         return f64::NAN;
     }
     2.0 * inverse_gamma_tails(k / 2.0, p, 1.0 - p)
@@ -1395,7 +1397,7 @@ pub(crate) fn inverse_gamma_tails(a: f64, p: f64, q: f64) -> f64 {
 ///
 /// # Returns
 /// - `0` for `p = 0`, `+∞` for `p = 1`.
-/// - `f64::NAN` if `a ≤ 0`, `p ∉ [0, 1]` or an input is NaN.
+/// - `f64::NAN` if `a ≤ 0` or infinite, `p ∉ [0, 1]` or an input is NaN.
 ///
 /// # Examples
 /// ```
@@ -1408,7 +1410,7 @@ pub(crate) fn inverse_gamma_tails(a: f64, p: f64, q: f64) -> f64 {
 /// assert!((regularized_lower_gamma(3.5, x) - 0.2).abs() < 1e-14);
 /// ```
 pub fn inverse_regularized_lower_gamma(a: f64, p: f64) -> f64 {
-    if (a.is_nan() || a <= 0.0) || !(0.0..=1.0).contains(&p) {
+    if a.is_nan() || a <= 0.0 || a.is_infinite() || !(0.0..=1.0).contains(&p) {
         return f64::NAN;
     }
     if p == 0.0 {
@@ -1433,7 +1435,7 @@ pub fn inverse_regularized_lower_gamma(a: f64, p: f64) -> f64 {
 ///
 /// # Returns
 /// - `+∞` for `q = 0`, `0` for `q = 1`.
-/// - `f64::NAN` if `a ≤ 0`, `q ∉ [0, 1]` or an input is NaN.
+/// - `f64::NAN` if `a ≤ 0` or infinite, `q ∉ [0, 1]` or an input is NaN.
 ///
 /// # Examples
 /// ```
@@ -1445,7 +1447,7 @@ pub fn inverse_regularized_lower_gamma(a: f64, p: f64) -> f64 {
 /// assert!((regularized_upper_gamma(2.5, x) / 1e-14 - 1.0).abs() < 1e-12);
 /// ```
 pub fn inverse_regularized_upper_gamma(a: f64, q: f64) -> f64 {
-    if (a.is_nan() || a <= 0.0) || !(0.0..=1.0).contains(&q) {
+    if a.is_nan() || a <= 0.0 || a.is_infinite() || !(0.0..=1.0).contains(&q) {
         return f64::NAN;
     }
     if q == 0.0 {
@@ -1576,7 +1578,7 @@ pub(crate) fn inverse_beta_tails(p: f64, q: f64, a: f64, b: f64) -> BetaRoot {
 ///
 /// # Returns
 /// - `0` for `p = 0`, `1` for `p = 1`.
-/// - `f64::NAN` if `a ≤ 0`, `b ≤ 0`, `p ∉ [0, 1]` or an input is NaN.
+/// - `f64::NAN` if `a` or `b` is `≤ 0` or infinite, `p ∉ [0, 1]` or an input is NaN.
 ///
 /// # Examples
 /// ```
@@ -1588,7 +1590,14 @@ pub(crate) fn inverse_beta_tails(p: f64, q: f64, a: f64, b: f64) -> BetaRoot {
 /// assert!((regularized_incomplete_beta(x, 3.0, 4.5) - 0.9).abs() < 1e-14);
 /// ```
 pub fn inverse_regularized_incomplete_beta(p: f64, a: f64, b: f64) -> f64 {
-    if (a.is_nan() || a <= 0.0) || (b.is_nan() || b <= 0.0) || !(0.0..=1.0).contains(&p) {
+    if a.is_nan()
+        || a <= 0.0
+        || a.is_infinite()
+        || b.is_nan()
+        || b <= 0.0
+        || b.is_infinite()
+        || !(0.0..=1.0).contains(&p)
+    {
         return f64::NAN;
     }
     if p == 0.0 {

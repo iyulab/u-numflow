@@ -63,7 +63,7 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
   (4·10⁻¹⁴ at `t(0.5)`, `p = 10⁻¹⁰⁰`, where the quantile is 10¹⁹⁹), and 2·10⁻¹³ for `χ²` to 10⁶ degrees of freedom; where the
   previous code was right the new code is no worse. Past a shape of 10³ the bound is the incomplete beta function's
   own — `1 − x` is a rounded double — about `3·10⁻¹⁷ · shape`: 6·10⁻¹² for `t(10⁶)`, 7·10⁻¹⁰ for `F(3, 10⁸)` and 2·10⁻⁷
-  for `t(10¹⁰)` at `p = 0.975` (1·10⁻⁷ before; for `p` from 0.1 to 0.9 it fell from 10⁻⁸–3·10⁻⁶ to 3·10⁻¹⁵). A quantile beyond the largest double is ±∞. `t_distribution_quantile(0.5, df)` is
+  for `t(10¹⁰)` at `p = 0.975` (1·10⁻⁷ before; for `p` from 0.1 to 0.9 it fell from 10⁻⁸–3·10⁻⁶ to 3·10⁻¹⁵). A quantile beyond the largest double is ±∞, an infinite shape is NaN (the CDFs are not defined there either). `t_distribution_quantile(0.5, df)` is
   still exactly 0, and the odd symmetry holds to the bit where `1 − p` is exact.
 - `regularized_incomplete_beta` documented "relative error < 1e-10" without a shape: measured against mpmath at 60 digits the error
   of a value in the smaller tail grows with the shape, `≈ 3·10⁻¹⁶ · max(a, b)` of that tail (4·10⁻¹³ at a shape of 10³, 4·10⁻¹¹

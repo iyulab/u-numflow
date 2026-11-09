@@ -2103,6 +2103,16 @@ fn degenerate_arguments() {
         assert!(inverse_regularized_incomplete_beta(0.3, bad, 2.0).is_nan());
         assert!(inverse_regularized_incomplete_beta(0.3, 2.0, bad).is_nan());
     }
+    // an infinite shape is outside the domain of every CDF here, so of every inverse
+    let inf = f64::INFINITY;
+    assert!(t_distribution_quantile(0.3, inf).is_nan());
+    assert!(f_distribution_quantile(0.3, inf, 2.0).is_nan());
+    assert!(f_distribution_quantile(0.3, 2.0, inf).is_nan());
+    assert!(chi_squared_quantile(0.3, inf).is_nan());
+    assert!(inverse_regularized_lower_gamma(inf, 0.3).is_nan());
+    assert!(inverse_regularized_upper_gamma(inf, 0.3).is_nan());
+    assert!(inverse_regularized_incomplete_beta(0.3, inf, 2.0).is_nan());
+    assert!(inverse_regularized_incomplete_beta(0.3, 2.0, inf).is_nan());
     assert!(inverse_regularized_lower_gamma(2.0, 1.5).is_nan());
     assert!(inverse_regularized_upper_gamma(2.0, -0.1).is_nan());
     assert!(inverse_regularized_incomplete_beta(f64::NAN, 2.0, 3.0).is_nan());
