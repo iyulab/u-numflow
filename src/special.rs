@@ -1423,6 +1423,77 @@ mod tests {
         }
     }
 
+    /// Tails of the t, chi-squared and F distributions over eleven decades of
+    /// probability agree with 50-digit references (mpmath) to 1e-11 — the
+    /// measured worst case over a grid of shapes up to 1000 is 4e-13, against a
+    /// documented 1e-10. The values are the library's own `cdf`/`sf` of the
+    /// *tail* side, the side `1 − p` cannot resolve.
+    #[test]
+    #[allow(clippy::excessive_precision)] // the oracle's digits, not a double's
+    fn distribution_tails_match_high_precision_references() {
+        let cases: [(&str, f64, f64); 11] = [
+            (
+                "t sf(50, df 5)",
+                t_distribution_sf(50.0, 5.0),
+                3.0238788133006126158e-8,
+            ),
+            (
+                "t cdf(-1000, df 30)",
+                t_distribution_cdf(-1000.0, 30.0),
+                1.0360017415558665384e-69,
+            ),
+            (
+                "t sf(40, df 100)",
+                t_distribution_sf(40.0, 100.0),
+                1.2310538010700354086e-63,
+            ),
+            (
+                "t cdf(-0.0685, df 1000)",
+                t_distribution_cdf(-0.0685, 1000.0),
+                0.47270065703769550609,
+            ),
+            (
+                "chi2 sf(150, k 10)",
+                chi_squared_sf(150.0, 10.0),
+                3.7274850550625096223e-27,
+            ),
+            (
+                "chi2 cdf(162.6, k 300)",
+                chi_squared_cdf(162.6, 300.0),
+                6.0338105060092684794e-12,
+            ),
+            (
+                "chi2 cdf(0.1, k 50)",
+                chi_squared_cdf(0.1, 50.0),
+                1.8311572110618871927e-58,
+            ),
+            (
+                "F sf(43615, 5, 20)",
+                f_distribution_sf(43615.0, 5.0, 20.0),
+                1.1929248028039253673e-39,
+            ),
+            (
+                "F cdf(0.0167, 400, 100)",
+                f_distribution_cdf(0.0167, 400.0, 100.0),
+                2.5142250142406613392e-190,
+            ),
+            (
+                "F cdf(0.0084, 30, 30)",
+                f_distribution_cdf(0.0084, 30.0, 30.0),
+                4.4840323212262492187e-24,
+            ),
+            (
+                "F sf(960750, 400, 100)",
+                f_distribution_sf(960750.0, 400.0, 100.0),
+                6.2974676960374199785e-277,
+            ),
+        ];
+        for (name, got, want) in cases {
+            let rel = (got / want - 1.0).abs();
+            assert!(rel < 1e-11, "{name}: {got:e} vs {want:e} ({rel:e})");
+        }
+    }
+
     /// Where the tail takes over from `erfc` (x = 1.25·√2) the two agree, and
     /// the cut is monotone across it.
     #[test]
