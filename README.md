@@ -17,7 +17,7 @@ u-numflow provides foundational mathematical, statistical, and probabilistic bui
 |--------|-------------|
 | `stats` | Descriptive statistics (mean, variance, skewness, kurtosis) with Welford's online algorithm and Neumaier summation |
 | `distributions` | Probability distributions: Uniform, Triangular, PERT, Normal, LogNormal, Weibull, Exponential, Gamma, Beta, χ² |
-| `special` | Special functions: normal CDF and tail-precise survival function (and their inverses), t/F/chi² CDF and quantiles, the noncentral t CDF (Lenth AS 243 — the distribution power is computed from), regularized incomplete beta/gamma, erf |
+| `special` | Special functions: normal CDF and tail-precise survival function (and their inverses), t/F/chi² CDF and quantiles (accurate to a probability of 1e-300), the noncentral t CDF (Lenth AS 243 — the distribution power is computed from), regularized incomplete beta/gamma and their inverses (`inverse_regularized_lower_gamma` · `_upper_gamma` · `inverse_regularized_incomplete_beta`), erf |
 | `transforms` | Data transformations: Box-Cox (λ via MLE golden-section search), inverse Box-Cox |
 | `fourier` | Discrete Fourier transform of any length (radix-2 for powers of two, Bluestein otherwise): `fft`, `ifft`, `rfft`, `Complex` |
 | `optimize` | Derivative-free local minimisation of a function of several variables: `nelder_mead` (Nelder–Mead simplex, dimension-adaptive coefficients, relative tolerances) |

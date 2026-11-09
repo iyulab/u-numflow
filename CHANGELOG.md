@@ -65,6 +65,12 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
   own — `1 − x` is a rounded double — about `3·10⁻¹⁷ · shape`: 6·10⁻¹² for `t(10⁶)`, 7·10⁻¹⁰ for `F(3, 10⁸)` and 2·10⁻⁷
   for `t(10¹⁰)` at `p = 0.975` (1·10⁻⁷ before; for `p` from 0.1 to 0.9 it fell from 10⁻⁸–3·10⁻⁶ to 3·10⁻¹⁵). A quantile beyond the largest double is ±∞. `t_distribution_quantile(0.5, df)` is
   still exactly 0, and the odd symmetry holds to the bit where `1 − p` is exact.
+- `regularized_incomplete_beta` documented "relative error < 1e-10" without a shape: measured against mpmath at 60 digits the error
+  of a value in the smaller tail grows with the shape, `≈ 3·10⁻¹⁶ · max(a, b)` of that tail (4·10⁻¹³ at a shape of 10³, 4·10⁻¹¹
+  at 10⁶, 3·10⁻⁹ for `I(1.5, 5·10⁷)`), because the continued fraction is handed a `1 − x` rounded from a small `x` (the
+  t, F and beta quantiles inherit it). The `# Accuracy` section says so, and a test holds the CDF to that line. Using the
+  direct fraction a few times past the mean instead of the symmetric one, to keep the small `x` exact, does not converge
+  (errors of order 10³ from 4× the mean), so the fix is a different algorithm for large shapes, not a threshold.
 
 ## [UNumflow 0.8.2] - 2026-11-09
 

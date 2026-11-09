@@ -463,7 +463,13 @@ fn ln_beta_large(p: f64, q: f64) -> f64 {
 /// Reference: Press et al. (2007), *Numerical Recipes*, 3rd ed., §6.4.
 ///
 /// # Accuracy
-/// Relative error < 1e-10 for typical parameter ranges.
+/// Relative error < 1e-10 for typical parameter ranges. For a shape (`max(a, b)`)
+/// past about 10³ the error of a value in the smaller tail grows in proportion to
+/// the shape, `≈ 3·10⁻¹⁶ · max(a, b)` of that tail (4·10⁻¹³ at 10³, 4·10⁻¹¹ at 10⁶,
+/// 3·10⁻⁹ at 5·10⁷): the continued fraction is evaluated at the double `x`
+/// or at `1 − x`, whichever is on the far side of the mean, and a `1 − x` formed
+/// from a small `x` has lost the digits that the tail depends on. The normal
+/// approximation takes over at a shape of 10⁷ in both parameters.
 ///
 /// # Examples
 /// ```
