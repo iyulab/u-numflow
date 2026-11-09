@@ -8,6 +8,20 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ## [Unreleased]
 
+## [UNumflow 0.8.2] - 2026-11-09
+
+The .NET client only; the crate is unchanged at 0.16.2. The package carries the native library built from 0.16.2, where
+`UNumflow` 0.8.1 carried the one built from 0.15.0, so it takes every fix of 0.16.0, 0.16.1 and 0.16.2: the regularized
+incomplete beta and gamma functions (every beta, gamma and chi-squared CDF, and the F and t p-values) keep their digits at
+large shapes, the Student t, gamma and chi-squared densities too, and the Frobenius norm and the symmetric eigen solver are
+right in any unit.
+
+### Changed
+
+- A distribution whose mean, variance, quantile or sample is beyond a double now throws `NumflowException` with `ErrorCode`
+  `result_overflow` (`Parameter` names the answer, `Index` the first variate that overflows). The native answer used to carry
+  `null` where a number was declared, and the client's constructor threw `InvalidOperationException` reading it.
+
 ## [0.16.2] - 2026-11-09
 
 ### Added
