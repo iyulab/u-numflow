@@ -8,6 +8,8 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ## [Unreleased]
 
+## [0.16.3] - 2026-11-10
+
 ### Added
 
 - `special::inverse_regularized_lower_gamma(a, p)`, `inverse_regularized_upper_gamma(a, q)` and
