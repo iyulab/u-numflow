@@ -8,6 +8,22 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ## [Unreleased]
 
+### Changed
+
+- `special::regularized_incomplete_beta` (and the t, F and beta CDFs and quantiles built on it) holds its digits at large
+  shapes. Past a shape of about 10³ the error of a value in the smaller tail used to grow with the shape,
+  `≈ 3·10⁻¹⁶ · max(a, b)` (documented since 0.16.2), for two reasons now removed. (1) A large `a` against a small `b` (the
+  Student t with a large sample, an F with a large denominator): the continued fraction was handed an `x` that is `1 −` a
+  small number, rounded, and a large `a` multiplies that rounding (6·10⁻⁷ at a shape of 5·10⁹). Where `a ≥ 15`, `a ≥ 8b`,
+  `b³ ≤ a²` and `x` is at or past the middle, the value now comes from the asymptotic expansion in `1 − x` (Didonato &
+  Morris, ACM TOMS 708), built from `1 − x` alone. (2) With both shapes large, the prefix `x^a (1 − x)^b / B(a, b)` was a sum of
+  terms of order `a ln a` that cancel to the order of `ln a` (4·10⁻¹³ at 10³, 2·10⁻⁹ at 9·10⁶); it is now taken as a deviation from
+  the mean. Against 541 points of a 60-digit reference grid (shapes 0.05 to 9·10⁶, probabilities 10⁻¹² to 1 − 10⁻⁸) the worst
+  error is 6·10⁻¹⁴ where one shape is small (up to 5·10⁹), 2·10⁻¹³ with both shapes up to 10⁵ and 2·10⁻¹² to 10⁷.
+- `regularized_lower_gamma` and `regularized_upper_gamma`: for a shape of 10 or more the prefix `x^a e^{−x} / Γ(a)` is formed
+  without the cancellation of three terms of order `a ln a` (4·10⁻¹⁴ → 1.4·10⁻¹⁴ at a shape of 50, 1.4·10⁻¹⁰ → 4·10⁻¹³ at 10⁵,
+  against mpmath at 50 digits, in the smaller tail).
+
 ## [0.16.3] - 2026-11-10
 
 ### Added

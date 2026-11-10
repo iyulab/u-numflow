@@ -698,16 +698,17 @@ fn err(got: f64, want: f64) -> f64 {
     (got - want).abs() / want.min(1.0 - want).max(1e-300)
 }
 
-/// The accuracy the CDF has today (see its `# Accuracy` section): the error of a
-/// value in the smaller tail grows with the shape, because the continued fraction
-/// is handed a `1 - x` rounded from a small `x`. The bound is the measured line,
-/// not a goal; a better algorithm for large shapes (the asymptotic expansion in
-/// `1 - x` of Didonato & Morris, ACM TOMS 708) lowers it and this test with it.
+/// The accuracy the CDF has: a large `a` against a small `b` (`min(a, b) <= 3`, the
+/// shapes of a t or F test with a large sample) is evaluated from `1 - x` alone by
+/// the large-`a` expansion and holds `3e-14` of the smaller tail at any shape in
+/// the table; with both shapes large the prefix is a sum of large cancelling terms
+/// and the error grows with the shape, `3e-16 * max(a, b)` (the measured line, not
+/// a goal -- a deviation-form prefix lowers it and this test with it).
 #[test]
 fn error_stays_within_the_documented_line() {
     for &(x, a, b, want) in &CASES {
         let got = regularized_incomplete_beta(x, a, b);
-        let bound = 1e-13 + 3e-16 * a.max(b);
+        let bound = if a.min(b) <= 3.0 { 3e-14 } else { 2e-13 };
         assert!(
             err(got, want) <= bound,
             "I_{x:e}({a:e}, {b:e}) = {got:e}, want {want:e}: {:.2e} > {bound:.2e}",

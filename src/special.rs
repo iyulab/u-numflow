@@ -386,25 +386,33 @@ pub(crate) fn ln_gamma_half_step(h: f64) -> f64 {
 /// near `a`: there the direct form subtracts numbers of order `a` to leave one of
 /// order `(a − z)²/a`, so a series in `(a − z)/(a + z)` is summed instead.
 fn deviance_term(a: f64, z: f64) -> f64 {
-    if (a - z).abs() < 0.1 * (a + z) {
-        let v = (a - z) / (a + z);
-        let mut sum = (a - z) * v;
-        if sum.abs() < f64::MIN_POSITIVE {
-            return sum;
-        }
-        let mut term = 2.0 * a * v;
-        let v2 = v * v;
-        for j in 1..1000 {
-            term *= v2;
-            let next = sum + term / (2 * j + 1) as f64;
-            if next == sum {
-                return next;
-            }
-            sum = next;
-        }
-        return sum;
+    deviance_near_mean(a, a - z, z).unwrap_or_else(|| a * (a / z).ln() + z - a)
+}
+
+/// The series of [`deviance_term`] for a `z` within a tenth of `a`, from the gap
+/// `a − z` given on its own (a caller may have it to more digits than the
+/// difference of the two rounded numbers); `None` farther out, where the direct
+/// form loses nothing it needs.
+fn deviance_near_mean(a: f64, gap: f64, z: f64) -> Option<f64> {
+    if gap.abs() >= 0.1 * (a + z) {
+        return None;
     }
-    a * (a / z).ln() + z - a
+    let v = gap / (a + z);
+    let mut sum = gap * v;
+    if sum.abs() < f64::MIN_POSITIVE {
+        return Some(sum);
+    }
+    let mut term = 2.0 * a * v;
+    let v2 = v * v;
+    for j in 1..1000 {
+        term *= v2;
+        let next = sum + term / (2 * j + 1) as f64;
+        if next == sum {
+            return Some(next);
+        }
+        sum = next;
+    }
+    Some(sum)
 }
 
 /// `ln(z^a e^−z / Γ(a))` -- the kernel of the gamma density, whose terms
@@ -463,13 +471,23 @@ fn ln_beta_large(p: f64, q: f64) -> f64 {
 /// Reference: Press et al. (2007), *Numerical Recipes*, 3rd ed., §6.4.
 ///
 /// # Accuracy
-/// Relative error < 1e-10 for typical parameter ranges. For a shape (`max(a, b)`)
-/// past about 10³ the error of a value in the smaller tail grows in proportion to
-/// the shape, `≈ 3·10⁻¹⁶ · max(a, b)` of that tail (4·10⁻¹³ at 10³, 4·10⁻¹¹ at 10⁶,
-/// 3·10⁻⁹ at 5·10⁷): the continued fraction is evaluated at the double `x`
-/// or at `1 − x`, whichever is on the far side of the mean, and a `1 − x` formed
-/// from a small `x` has lost the digits that the tail depends on. The normal
-/// approximation takes over at a shape of 10⁷ in both parameters.
+/// Relative error of the value in the smaller tail, measured against 60-digit
+/// references over 541 points (shapes 0.05 to 9·10⁶, probabilities 10⁻¹² to
+/// 1 − 10⁻⁸):
+///
+/// - below 6·10⁻¹⁴ where one shape is small (`min(a, b) ≤ 3`), at every shape
+///   tested up to 5·10⁹ (the Student t with 10¹⁰ degrees of freedom);
+/// - below 2·10⁻¹³ with both shapes up to 10⁵, and below 2·10⁻¹² to 10⁷.
+///
+/// A large `a` against a small `b` (`a ≥ 15`, `a ≥ 8b`, `b³ ≤ a²`) with `x` at
+/// or past the middle is evaluated from `1 − x` alone by an asymptotic expansion
+/// (Didonato & Morris, ACM TOMS 708): a continued fraction handed an `x` that is
+/// 1 minus a small number, rounded, loses `≈ 3·10⁻¹⁶ · a` of the result (6·10⁻⁷
+/// at 5·10⁹). With both shapes ≥ 10 the prefix `x^a (1 − x)^b / B(a, b)` is
+/// taken as a deviation from the mean `a / (a + b)` (Stirling's series for the
+/// three gammas and the deviance of Loader 2000) rather than as three terms of
+/// order `a ln a` that cancel to the order of `ln a`. The normal approximation
+/// takes over at a shape of 10⁷ in both parameters.
 ///
 /// # Examples
 /// ```
@@ -518,13 +536,75 @@ fn incomplete_beta_with_complement(x: f64, y: f64, a: f64, b: f64) -> f64 {
         return 1.0 - incomplete_beta_with_complement(y, x, b, a);
     }
 
-    // The logarithm of whichever of the pair is near 1 from the other one:
-    // ln(1 - y) = ln_1p(-y) keeps digits that ln(x) of a rounded x does not.
+    // A large `a` against a small `b` with `x` near 1: the continued fraction
+    // takes `x` itself, and an `x` that is 1 minus a small `y` has `y`'s digits
+    // only as far as it was rounded, which a large `a` multiplies. The
+    // expansion below is built from `y` alone.
+    if x >= 0.5 && bgrat_applies(a, b) {
+        if let Some(value) = beta_large_a_expansion(y, a, b) {
+            return value;
+        }
+    }
+
+    beta_by_continued_fraction(x, y, a, b)
+}
+
+/// `I_x(a, b)` as the prefix `x^a y^b / (a B(a, b))` times the continued
+/// fraction, for an `x` at or below the mean (where it converges quickly).
+fn beta_by_continued_fraction(x: f64, y: f64, a: f64, b: f64) -> f64 {
+    let ln_prefix = if a.min(b) >= STIRLING_FROM && a.max(b) < 1e15 {
+        ln_beta_density_over_a(x, y, a, b)
+    } else {
+        // The logarithm of whichever of the pair is near 1 from the other one:
+        // ln(1 - y) = ln_1p(-y) keeps digits that ln(x) of a rounded x does not.
+        let ln_x = if x < 0.5 { x.ln() } else { (-y).ln_1p() };
+        let ln_y = if y < 0.5 { y.ln() } else { (-x).ln_1p() };
+        a * ln_x + b * ln_y - ln_beta(a, b) - a.ln()
+    };
+    let cf = beta_cf(x, y, a, b);
+    ln_prefix.exp() * cf
+}
+
+/// `ln(x^a y^b / (a B(a, b)))` for `a, b >= 10` and `y = 1 − x`, as the distance of
+/// `x` from the mean `a / (a + b)` rather than as three large terms that cancel to
+/// the order of `ln a`. With `s = a + b` and Stirling's series for the three
+/// gammas,
+///
+/// ```text
+/// x^a y^b / B(a, b) = (s x / a)^a (s y / b)^b · sqrt(a b / s) / sqrt(2π) · e^{-c(a) - c(b) + c(s)},
+/// ln [(s x / a)^a (s y / b)^b] = −dev(a, s x) − dev(b, s y),
+/// ```
+///
+/// the deviance terms of [`deviance_term`], which are small near the mean. The
+/// gaps `a − s x = −g` and `b − s y = g` are one number, `g = s x − a`, which is
+/// formed once from whichever of the pair is exact and with one rounding.
+fn ln_beta_density_over_a(x: f64, y: f64, a: f64, b: f64) -> f64 {
+    let s = a + b;
+    // s = a + b is rounded: the error of that sum (TwoSum), kept, so that
+    // `s x − a` near the mean is not off by `x` times it.
+    let s_back = s - a;
+    let s_tail = (a - (s - s_back)) + (b - s_back);
+    // `g = s x − a = b − s y`: from the smaller of the pair, which is exact, and
+    // with one rounding.
+    let g = if x <= y {
+        x.mul_add(s, -a) + s_tail * x
+    } else {
+        (-y).mul_add(s, b) - s_tail * y
+    };
+    // Far from the mean the direct form `a ln(a / (s x)) + s x − a` is used with
+    // the logarithms of the pair taken from the exact one (`ln_1p`), so that a
+    // `y` rounded from `1 − x` is never an input of the large `ln` terms.
     let ln_x = if x < 0.5 { x.ln() } else { (-y).ln_1p() };
     let ln_y = if y < 0.5 { y.ln() } else { (-x).ln_1p() };
-    let ln_prefix = a * ln_x + b * ln_y - ln_beta(a, b);
-    let cf = beta_cf(x, y, a, b);
-    (ln_prefix.exp() / a) * cf
+    let dev_a =
+        deviance_near_mean(a, -g, s * x).unwrap_or_else(|| a * (-(b / a).ln_1p() - ln_x) + g);
+    let dev_b =
+        deviance_near_mean(b, g, s * y).unwrap_or_else(|| b * (-(a / b).ln_1p() - ln_y) - g);
+    -dev_a - dev_b + 0.5 * (b.ln() - s.ln() - a.ln())
+        - 0.5 * (2.0 * std::f64::consts::PI).ln()
+        - stirling_correction(a)
+        - stirling_correction(b)
+        + stirling_correction(s)
 }
 
 /// The most terms a series or continued fraction is given for a shape: near the
@@ -604,6 +684,96 @@ fn beta_cf(x: f64, y: f64, a: f64, b: f64) -> f64 {
         }
     }
     h
+}
+
+/// Where [`beta_large_a_expansion`] is used: `a` large, `b` small beside it.
+///
+/// The terms fall off by about `b³ / (24 a²)` each, so what it needs is `a`
+/// large against `b`, not `a` large: `b³ <= a²` keeps the ratio under 1/24, and
+/// `a >= 8 b` and `a >= 15` keep the gamma functions in it away from their small
+/// arguments.
+fn bgrat_applies(a: f64, b: f64) -> bool {
+    a >= BGRAT_MIN_A && a >= BGRAT_RATIO * b && b * b * b <= a * a
+}
+
+const BGRAT_MIN_A: f64 = 15.0;
+const BGRAT_RATIO: f64 = 8.0;
+/// The most terms of the series used; the terms fall off by about `1 / (4 a²)`.
+const BGRAT_TERMS: usize = 30;
+
+/// `I_x(a, b)` for a large `a` against a small `b`, from `y = 1 − x` alone
+/// (Didonato & Morris 1992, "Algorithm 708", the expansion for `a ≥ 15`;
+/// derived here from the integral rather than from their code).
+///
+/// With `t = e^{-s}`, `I_x(a, b) = B(a, b)⁻¹ ∫_{s₀}^∞ e^{-a s} (1 − e^{-s})^{b−1} ds`
+/// where `s₀ = −ln x`, and `(1 − e^{-s})^{b−1} = s^{b−1} e^{-(b−1)s/2} g(s)^{b−1}`
+/// with `g(s) = sinh(s/2) / (s/2) = Σ σᵢ s^{2i}`, `σᵢ = 1 / (4ⁱ (2i+1)!)`. Writing
+/// `g^{b−1} = Σ dₖ s^{2k}` (`dₖ` by the recurrence for a power of a series) and
+/// `ν = a + (b−1)/2`, the integral of each term is an upper incomplete gamma:
+///
+/// ```text
+/// I_x(a, b) = Γ(a+b) / (Γ(a) ν^b) · Σ dₖ (b)_{2k} ν^{-2k} · Q(b + 2k, z),   z = −ν ln x.
+/// ```
+///
+/// `Q(b + 2k, z)` follows from `Q(b, z)` by `Q(c + 1, z) = Q(c, z) + z^c e^{-z} / Γ(c + 1)`,
+/// every term positive. `z` comes from `ln_1p(−y)`, so there is no `1 − y`
+/// anywhere for a large `a` to amplify. `None` where the series does not settle.
+fn beta_large_a_expansion(y: f64, a: f64, b: f64) -> Option<f64> {
+    if !(y > 0.0 && y < 1.0 && a.is_finite() && b > 0.0) {
+        return None;
+    }
+    let nu = a + 0.5 * (b - 1.0);
+    let z = -nu * (-y).ln_1p();
+    if !(z > 0.0 && z.is_finite()) {
+        return None;
+    }
+    // Γ(a+b) / (Γ(a) ν^b), the logarithm taken from Stirling's series so that
+    // the `b ln a` of the two gammas and of `ν^b` cancel analytically:
+    // (a + b − ½) ln(1 + b/a) − b − b ln(1 + (b−1)/(2a)) + c(a+b) − c(a).
+    let ln_ratio = (a + b - 0.5) * (b / a).ln_1p() - b - b * ((b - 1.0) / (2.0 * a)).ln_1p()
+        + stirling_correction(a + b)
+        - stirling_correction(a);
+
+    // σᵢ and dₖ.
+    let power = b - 1.0;
+    let mut sigma = [0.0_f64; BGRAT_TERMS + 1];
+    let mut d = [0.0_f64; BGRAT_TERMS + 1];
+    sigma[0] = 1.0;
+    d[0] = 1.0;
+    for i in 1..=BGRAT_TERMS {
+        let two_i = 2.0 * i as f64;
+        sigma[i] = sigma[i - 1] / (4.0 * two_i * (two_i + 1.0));
+    }
+
+    // Q(b, z) and the first of the terms z^c e^{-z} / Γ(c + 1) that carry it up.
+    let mut q = regularized_upper_gamma(b, z);
+    let mut e = (b * z.ln() - z - ln_gamma(b + 1.0)).exp();
+    let mut scale = 1.0; // (b)_{2k} / ν^{2k}
+    let nu2 = nu * nu;
+    let mut sum = d[0] * q;
+    for k in 1..=BGRAT_TERMS {
+        let kf = k as f64;
+        let two_k = 2.0 * kf;
+        // Q(b + 2k, z) = Q(b + 2k − 2, z) + E(b + 2k − 2) + E(b + 2k − 1).
+        let e_next = e * z / (b + two_k - 1.0);
+        q += e + e_next;
+        e = e_next * z / (b + two_k);
+        scale *= (b + two_k - 2.0) * (b + two_k - 1.0) / nu2;
+
+        let mut acc = 0.0;
+        for i in 1..=k {
+            acc += (power * i as f64 - (k - i) as f64) * sigma[i] * d[k - i];
+        }
+        d[k] = acc / kf;
+
+        let term = d[k] * scale * q;
+        sum += term;
+        if term.abs() <= 1e-17 * sum.abs() {
+            let value = ln_ratio.exp() * sum;
+            return (value.is_finite() && value >= 0.0).then_some(value.min(1.0));
+        }
+    }
+    None
 }
 
 // ============================================================================
@@ -688,7 +858,7 @@ fn gamma_series(a: f64, x: f64) -> f64 {
             break;
         }
     }
-    sum * (-x + a * x.ln() - ln_gamma(a)).exp()
+    sum * ln_gamma_kernel(a, x).exp()
 }
 
 /// Continued fraction for the upper incomplete gamma Q(a, x) = 1 − P(a, x).
@@ -715,7 +885,7 @@ fn gamma_cf(a: f64, x: f64) -> f64 {
             break;
         }
     }
-    h * (-x + a * x.ln() - ln_gamma(a)).exp()
+    h * ln_gamma_kernel(a, x).exp()
 }
 
 // ============================================================================
@@ -2897,5 +3067,97 @@ mod scipy_tail_reference {
                 "B({a}, {b})"
             );
         }
+    }
+
+    /// `I_x(a, 1) = x^a` and `I_x(a, 2) = x^a (1 + a y)` in closed form: the large-`a`
+    /// expansion built from `y` alone has to hold them at any `a`, including those
+    /// where a continued fraction handed a rounded `x` cannot.
+    #[test]
+    fn the_large_a_expansion_matches_the_closed_forms_at_b_one_and_two() {
+        for a in [15.0_f64, 100.0, 1e4, 1e7, 5e9] {
+            for t in [0.05_f64, 0.5, 1.0, 2.0, 5.0] {
+                // y chosen so that z = a t stays moderate: the lower tail of x^a.
+                let y = (-t / a).exp_m1().abs();
+                let ln_x = (-y).ln_1p();
+                let one = beta_large_a_expansion(y, a, 1.0).expect("settles at b = 1");
+                let want_one = (a * ln_x).exp();
+                assert!(
+                    (one - want_one).abs() <= 2e-14 * want_one,
+                    "I(a={a}, 1, y={y:e}) = {one:e}, want {want_one:e}"
+                );
+                let two = beta_large_a_expansion(y, a, 2.0).expect("settles at b = 2");
+                let want_two = want_one * (1.0 + a * y);
+                assert!(
+                    (two - want_two).abs() <= 2e-14 * want_two,
+                    "I(a={a}, 2, y={y:e}) = {two:e}, want {want_two:e}"
+                );
+            }
+        }
+    }
+
+    /// Where both the expansion and the continued fraction are good (`x` an exact
+    /// dyadic fraction, so `1 - x` is exact) they are the same function.
+    #[test]
+    fn the_large_a_expansion_agrees_with_the_continued_fraction_where_both_hold() {
+        for (a, b) in [(15.0_f64, 0.5_f64), (40.0, 3.0), (300.0, 7.0), (2e3, 0.1)] {
+            let mean = (a + 1.0) / (a + b + 2.0);
+            for k in 512..1024 {
+                let x = k as f64 / 1024.0;
+                if x >= mean {
+                    break;
+                }
+                let y = 1.0 - x;
+                let series = beta_large_a_expansion(y, a, b).expect("settles");
+                let fraction = beta_by_continued_fraction(x, y, a, b);
+                // Compare where the value is not lost below a double's smallest
+                // normal numbers.
+                if fraction > 1e-200 {
+                    assert!(
+                        (series - fraction).abs() <= 1e-12 * fraction,
+                        "a={a}, b={b}, x={x}: expansion {series:e}, fraction {fraction:e}"
+                    );
+                }
+            }
+        }
+    }
+
+    /// The deviation form of `x^a y^b / (a B(a, b))` is the same number as the
+    /// three-term form where that one still has its digits, and is symmetric in
+    /// the pair (`x ≤ y` and `x > y` take different routes to the gap).
+    #[test]
+    fn the_density_prefix_in_deviation_form_agrees_with_the_direct_one() {
+        for (a, b) in [
+            (12.0_f64, 12.0_f64),
+            (20.0, 45.0),
+            (150.0, 60.0),
+            (1e3, 2e3),
+        ] {
+            for k in [1, 3, 17, 100, 300, 511, 512, 513, 700, 900, 1020] {
+                let x = k as f64 / 1024.0;
+                let y = 1.0 - x;
+                let direct = a * x.ln() + b * y.ln() - ln_beta(a, b) - a.ln();
+                let deviation = ln_beta_density_over_a(x, y, a, b);
+                let tol = 1e-12 + 2e-16 * a.max(b) * (a.max(b)).ln();
+                assert!(
+                    (deviation - direct).abs() <= tol,
+                    "a={a}, b={b}, x={x}: deviation {deviation}, direct {direct}"
+                );
+                // Mirrored, the density is divided by `b` instead of `a`.
+                let mirrored = ln_beta_density_over_a(y, x, b, a) + b.ln() - a.ln();
+                assert!(
+                    (deviation - mirrored).abs() <= 1e-13 + 4e-16 * deviation.abs(),
+                    "a={a}, b={b}, x={x}: {deviation} against mirrored {mirrored}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn the_large_a_expansion_refuses_what_it_cannot_do() {
+        assert!(beta_large_a_expansion(0.0, 100.0, 1.0).is_none());
+        assert!(beta_large_a_expansion(1.0, 100.0, 1.0).is_none());
+        assert!(beta_large_a_expansion(0.1, 100.0, 0.0).is_none());
+        assert!(beta_large_a_expansion(0.1, f64::INFINITY, 1.0).is_none());
+        assert!(beta_large_a_expansion(f64::NAN, 100.0, 1.0).is_none());
     }
 }
