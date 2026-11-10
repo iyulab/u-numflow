@@ -74,6 +74,14 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
   direct fraction a few times past the mean instead of the symmetric one, to keep the small `x` exact, does not converge
   (errors of order 10³ from 4× the mean), so the fix is a different algorithm for large shapes, not a threshold.
 
+## [UNumflow 0.8.3] - 2026-11-10
+
+The .NET client only; the crate is 0.16.3. The package carries the native library built from 0.16.3, where `UNumflow` 0.8.2
+carried the one built from 0.16.2, so it takes the fixes of 0.16.3 that reach `Distribution`: the normal distribution's
+CDF keeps its digits at any distance, the CDF and quantile of `Exponential` and `Weibull` keep a small failure
+probability, and the quantiles of the gamma, chi-squared, beta and PERT distributions are right for a small
+probability. No .NET type changed.
+
 ## [UNumflow 0.8.2] - 2026-11-09
 
 The .NET client only; the crate is unchanged at 0.16.2. The package carries the native library built from 0.16.2, where

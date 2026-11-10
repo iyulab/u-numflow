@@ -28,7 +28,7 @@
     {
       "kind": "nuget",
       "name": "UNumflow",
-      "package_version": "0.8.2",
+      "package_version": "0.8.3",
       "engine_version": "0.16.3",
       "note": "C ABI wrapper over the same wire layer; versioned on its own axis, not with the crate.",
       "error_shape": "A NumflowException whose ErrorCode is the code, Parameter and Index the fields of those names, and Details the rest."
