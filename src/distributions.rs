@@ -187,6 +187,17 @@ impl Uniform {
         }
     }
 
+    /// Survival function: S(x) = (max−x)/(max−min), clamped to [0, 1].
+    pub fn survival(&self, x: f64) -> f64 {
+        if x <= self.min {
+            1.0
+        } else if x >= self.max {
+            0.0
+        } else {
+            (self.max - x) / (self.max - self.min)
+        }
+    }
+
     /// Inverse CDF (quantile function): x = min + p·(max−min).
     ///
     /// Returns `None` if `p` is outside `[0, 1]`.
@@ -307,6 +318,29 @@ impl Triangular {
         }
     }
 
+    /// Survival function of the triangular distribution, formed without the
+    /// subtraction from 1: a mode near the upper end leaves `1 − F` with no
+    /// digits where the tail is small.
+    ///
+    /// ```text
+    /// S(x) = (c−b)/(c−a) + (b−x)(x+b−2a) / ((c−a)(b−a))   for a < x ≤ b
+    ///      = (c−x)² / ((c−a)(c−b))                         for b < x < c
+    /// ```
+    pub fn survival(&self, x: f64) -> f64 {
+        let (a, b, c) = (self.min, self.mode, self.max);
+        if x <= a {
+            1.0
+        } else if x <= b {
+            // Both terms are positive; as ratios of widths, each at most 1.
+            let w = c - a;
+            (c - b) / w + (b - x) / w * (((x - a) + (b - a)) / (b - a))
+        } else if x < c {
+            (c - x) / (c - a) * ((c - x) / (c - b).max(f64::MIN_POSITIVE))
+        } else {
+            0.0
+        }
+    }
+
     /// Inverse CDF (quantile function) of the triangular distribution.
     ///
     /// ```text
@@ -388,6 +422,14 @@ impl Normal {
     pub fn cdf(&self, x: f64) -> f64 {
         let z = (x - self.mu) / self.sigma;
         special::standard_normal_cdf(z)
+    }
+
+    /// Survival function: Φ(−(x−μ)/σ), the upper tail formed directly
+    /// ([`special::standard_normal_sf`]) — `1 − cdf(x)` is 0 past about 8σ,
+    /// where the tail is still a number down to about 38σ.
+    pub fn survival(&self, x: f64) -> f64 {
+        let z = (x - self.mu) / self.sigma;
+        special::standard_normal_sf(z)
     }
 
     /// Inverse CDF (quantile): μ + σ·Φ⁻¹(p).
@@ -474,6 +516,16 @@ impl LogNormal {
         }
         let z = (x.ln() - self.mu) / self.sigma;
         special::standard_normal_cdf(z)
+    }
+
+    /// Survival function: Φ(−(ln x−μ)/σ) for x > 0, formed directly
+    /// ([`special::standard_normal_sf`]); 1 for x ≤ 0.
+    pub fn survival(&self, x: f64) -> f64 {
+        if x <= 0.0 {
+            return 1.0;
+        }
+        let z = (x.ln() - self.mu) / self.sigma;
+        special::standard_normal_sf(z)
     }
 
     /// Inverse CDF: exp(μ + σ·Φ⁻¹(p)).
@@ -628,8 +680,26 @@ impl Pert {
         if x >= self.max {
             return 1.0;
         }
-        let t = (x - self.min) / (self.max - self.min);
-        special::regularized_incomplete_beta(t, self.alpha, self.beta)
+        // The position and its complement, each formed from the data: `1 − t`
+        // of a rounded `t` has lost the digits of `max − x`.
+        let range = self.max - self.min;
+        let (t, u) = ((x - self.min) / range, (self.max - x) / range);
+        special::beta_cdf_from_pair(t, u, self.alpha, self.beta)
+    }
+
+    /// Survival function: the upper tail `I_u(β, α)` of the stretched Beta,
+    /// with `u = (max − x)/(max − min)` formed directly — `1 − cdf(x)` has no
+    /// digits left once the CDF is within 10⁻¹⁶ of 1.
+    pub fn survival(&self, x: f64) -> f64 {
+        if x <= self.min {
+            return 1.0;
+        }
+        if x >= self.max {
+            return 0.0;
+        }
+        let range = self.max - self.min;
+        let (t, u) = ((x - self.min) / range, (self.max - x) / range);
+        special::beta_cdf_from_pair(u, t, self.beta, self.alpha)
     }
 
     /// Evaluates the quantile (inverse CDF) at probability `p ∈ [0, 1]`.
@@ -1009,6 +1079,21 @@ impl GammaDistribution {
         special::regularized_lower_gamma(self.shape, z)
     }
 
+    /// Survival function: S(x) = Γ(α, βx) / Γ(α) = regularized upper
+    /// incomplete gamma, formed directly: `1 − cdf(x)` has no digits left once
+    /// the CDF is within 10⁻¹⁶ of 1.
+    pub fn survival(&self, x: f64) -> f64 {
+        if x <= 0.0 {
+            return 1.0;
+        }
+        let z = self.rate * x;
+        // βx past the largest double: every finite quantile lies below it.
+        if z == f64::INFINITY {
+            return 0.0;
+        }
+        special::regularized_upper_gamma(self.shape, z)
+    }
+
     /// Quantile (inverse CDF).
     ///
     /// [`special::inverse_regularized_lower_gamma`] scaled by `1/β`: Newton's
@@ -1231,6 +1316,13 @@ impl ChiSquared {
             return 0.0;
         }
         special::regularized_lower_gamma(self.k / 2.0, x / 2.0)
+    }
+
+    /// Survival function: S(x) = Q(k/2, x/2), formed directly
+    /// ([`special::chi_squared_sf`]) — the p-value of a chi-squared test keeps
+    /// its digits where `1 − cdf(x)` rounds to 0.
+    pub fn survival(&self, x: f64) -> f64 {
+        special::chi_squared_sf(x, self.k)
     }
 
     /// Evaluates the quantile (inverse CDF) at probability p ∈ [0, 1].

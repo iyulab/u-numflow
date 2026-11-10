@@ -1206,7 +1206,7 @@ pub(crate) fn regularized_incomplete_beta_upper(x: f64, a: f64, b: f64) -> f64 {
 }
 
 /// `I_x(a, b)` for a pair `x`, `y = 1 − x` the caller has formed directly.
-fn beta_cdf_from_pair(x: f64, y: f64, a: f64, b: f64) -> f64 {
+pub(crate) fn beta_cdf_from_pair(x: f64, y: f64, a: f64, b: f64) -> f64 {
     if x <= 0.0 {
         return 0.0;
     }

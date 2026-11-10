@@ -14,6 +14,13 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
   `1 − cdf(x)` has no digits left once the CDF is within 10⁻¹⁶ of 1, and the upper tail of a Beta with a large β (the mass near
   0) is far below that; the complement `1 − x` is the rounded one and the evaluation is built from the exact one.
 
+- `survival(x)` on `Normal`, `LogNormal`, `GammaDistribution`, `ChiSquared`, `Pert`, `Uniform` and `Triangular`, the upper tail
+  formed directly next to the `cdf` it pairs with (`Exponential`, `Weibull::reliability` and `BetaDistribution` already had one).
+  `1 − cdf(x)` is 0 once the CDF is within 10⁻¹⁶ of 1 — a normal beyond 8σ, a chi-squared p-value below 10⁻¹⁶, a gamma
+  reliability past a few tens of mean lives — where the tail is still a number (down to 10⁻³⁰⁰ and below). Against 96 points of a
+  60-digit reference the worst relative error is 9·10⁻¹⁴. `Pert::cdf` now hands the beta its position and the complement
+  `(max − x)/(max − min)` each formed from the data, not `1 − t` of a rounded `t`.
+
 ### Changed
 
 - `special::regularized_incomplete_beta` (and the t, F and beta CDFs and quantiles built on it) holds its digits at large
