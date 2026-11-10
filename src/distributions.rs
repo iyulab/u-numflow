@@ -1128,6 +1128,14 @@ impl BetaDistribution {
         special::regularized_incomplete_beta(x, self.alpha, self.beta)
     }
 
+    /// Survival function: S(x) = 1 − I_x(α, β) = I_{1−x}(β, α), formed directly:
+    /// `1 − F` has no digits left once `F` is within 10⁻¹⁶ of 1, and the upper
+    /// tail of a distribution with a large β (the mass near 0) is a number far
+    /// below that.
+    pub fn survival(&self, x: f64) -> f64 {
+        special::regularized_incomplete_beta_upper(x, self.alpha, self.beta)
+    }
+
     /// Evaluates the quantile (inverse CDF) at probability p ∈ [0, 1].
     ///
     /// [`special::inverse_regularized_incomplete_beta`]: Newton's method on

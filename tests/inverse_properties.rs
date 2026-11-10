@@ -3,6 +3,7 @@
 //! probabilities spread on a logarithmic scale (a probability of 1e-300 is as
 //! ordinary a p-value as 0.05).
 use proptest::prelude::*;
+use u_numflow::distributions::BetaDistribution;
 use u_numflow::special::{
     chi_squared_quantile, f_distribution_quantile, inverse_regularized_incomplete_beta,
     inverse_regularized_lower_gamma, inverse_regularized_upper_gamma, regularized_incomplete_beta,
@@ -66,8 +67,11 @@ proptest! {
         // a root within 1e-9 of 1 is a double near 1 with no digits of `1 − x` left
         prop_assume!(1.0 - x > 1e-9);
         let back = regularized_incomplete_beta(x, a, b);
-        // a shape past 1e3 carries the documented `3e-16 · shape` of the CDF itself
-        let tolerance = 1e-9 * p.min(1.0 - p) + 1e-12 + 1e-15 * a.max(b);
+        // the root is a double: the CDF at it differs from `p` by the density times the
+        // rounding of `x` (a density of 3e5 beside a root at 1 − 4e-9 is 3e-11), and a
+        // shape past 1e3 carried the `3e-16 · shape` of the CDF itself
+        let density = BetaDistribution::new(a, b).expect("valid shape").pdf(x);
+        let tolerance = 1e-9 * p.min(1.0 - p) + 1e-12 + 1e-15 * a.max(b) + 2.0 * density * f64::EPSILON;
         prop_assert!((back - p).abs() <= tolerance, "a={a} b={b} p={p:e} x={x:e} back={back:e}");
     }
 

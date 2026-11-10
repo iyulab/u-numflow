@@ -1190,6 +1190,21 @@ fn t_two_tail(t: f64, df: f64) -> f64 {
     beta_cdf_from_pair(x, y, df / 2.0, 0.5)
 }
 
+/// The upper tail `1 − I_x(a, b) = I_{1−x}(b, a)` for an `x` given alone: the
+/// complement of `x` is the one rounded, and the side of the pair that is exact
+/// (the smaller of `x` and `1 − x`) is what the evaluation is built from, so a
+/// large `b` does not multiply the rounding. The probability is not taken as
+/// `1 − I_x(a, b)`, which has no digits left once the lower tail is near 1.
+pub(crate) fn regularized_incomplete_beta_upper(x: f64, a: f64, b: f64) -> f64 {
+    if x <= 0.0 {
+        return 1.0;
+    }
+    if x >= 1.0 {
+        return 0.0;
+    }
+    beta_cdf_pair(1.0 - x, x, b, a)
+}
+
 /// `I_x(a, b)` for a pair `x`, `y = 1 − x` the caller has formed directly.
 fn beta_cdf_from_pair(x: f64, y: f64, a: f64, b: f64) -> f64 {
     if x <= 0.0 {
