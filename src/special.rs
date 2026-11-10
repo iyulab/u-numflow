@@ -1168,13 +1168,37 @@ pub fn t_distribution_cdf(t: f64, df: f64) -> f64 {
     if t == 0.0 {
         return 0.5;
     }
-    let x = df / (df + t * t);
-    let ib = regularized_incomplete_beta(x, df / 2.0, 0.5);
+    let ib = t_two_tail(t, df);
     if t >= 0.0 {
         1.0 - ib / 2.0
     } else {
         ib / 2.0
     }
+}
+
+/// `I_x(df/2, 1/2)` with `x = df / (df + t²)`, the probability of `|T| > |t|`,
+/// from the pair `x` and `1 − x = t² / (df + t²)` each formed directly: for a
+/// large `df` a rounded `1 − x` is what a large shape would multiply.
+fn t_two_tail(t: f64, df: f64) -> f64 {
+    let t2 = t * t;
+    let total = df + t2;
+    let (x, y) = (df / total, t2 / total);
+    if y.is_nan() {
+        // t² overflowed: x is 0.
+        return 0.0;
+    }
+    beta_cdf_from_pair(x, y, df / 2.0, 0.5)
+}
+
+/// `I_x(a, b)` for a pair `x`, `y = 1 − x` the caller has formed directly.
+fn beta_cdf_from_pair(x: f64, y: f64, a: f64, b: f64) -> f64 {
+    if x <= 0.0 {
+        return 0.0;
+    }
+    if y <= 0.0 {
+        return 1.0;
+    }
+    beta_cdf_pair(x, y, a, b)
 }
 
 /// Survival function of Student's t-distribution: P(T > t | df) = 1 − F(t).
@@ -1201,8 +1225,7 @@ pub fn t_distribution_sf(t: f64, df: f64) -> f64 {
     if t == 0.0 {
         return 0.5;
     }
-    let x = df / (df + t * t);
-    let tail = regularized_incomplete_beta(x, df / 2.0, 0.5) / 2.0;
+    let tail = t_two_tail(t, df) / 2.0;
     if t > 0.0 {
         tail
     } else {
@@ -1307,8 +1330,12 @@ pub fn f_distribution_cdf(x: f64, df1: f64, df2: f64) -> f64 {
     if x <= 0.0 {
         return 0.0;
     }
-    let y = df1 * x / (df1 * x + df2);
-    regularized_incomplete_beta(y, df1 / 2.0, df2 / 2.0)
+    let scaled = df1 * x;
+    let total = scaled + df2;
+    if total.is_infinite() {
+        return 1.0;
+    }
+    beta_cdf_from_pair(scaled / total, df2 / total, df1 / 2.0, df2 / 2.0)
 }
 
 /// Survival function of the F-distribution: P(X > x | df1, df2) = 1 − F(x).
@@ -1339,8 +1366,12 @@ pub fn f_distribution_sf(x: f64, df1: f64, df2: f64) -> f64 {
     if x <= 0.0 {
         return 1.0;
     }
-    let z = df2 / (df1 * x + df2);
-    regularized_incomplete_beta(z, df2 / 2.0, df1 / 2.0)
+    let scaled = df1 * x;
+    let total = scaled + df2;
+    if total.is_infinite() {
+        return 0.0;
+    }
+    beta_cdf_from_pair(df2 / total, scaled / total, df2 / 2.0, df1 / 2.0)
 }
 
 /// Quantile function (inverse CDF) of the F-distribution.

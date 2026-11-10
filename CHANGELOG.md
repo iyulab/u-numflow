@@ -20,6 +20,12 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
   terms of order `a ln a` that cancel to the order of `ln a` (4·10⁻¹³ at 10³, 2·10⁻⁹ at 9·10⁶); it is now taken as a deviation from
   the mean. Against 541 points of a 60-digit reference grid (shapes 0.05 to 9·10⁶, probabilities 10⁻¹² to 1 − 10⁻⁸) the worst
   error is 6·10⁻¹⁴ where one shape is small (up to 5·10⁹), 2·10⁻¹³ with both shapes up to 10⁵ and 2·10⁻¹² to 10⁷.
+- `t_distribution_cdf` / `t_distribution_sf` and `f_distribution_cdf` / `f_distribution_sf` (and with them every p-value and
+  confidence interval built on them) pass the incomplete beta the pair `x = df / (df + t²)`, `1 − x = t² / (df + t²)` each
+  formed directly instead of `x` alone: the beta rebuilt `1 − x` from a rounded `x`, and a large number of degrees of freedom
+  multiplied that rounding by `df`. The quantile-to-CDF round trip of the t distribution was off by 7·10⁻¹² at `df = 10⁵`,
+  2.4·10⁻⁸ at 10⁹, 5.5·10⁻⁵ at 10¹² and 2.9·10⁻³ at 10¹⁴; it is now below 3·10⁻¹³ at every one of them, and the CDF and survival
+  function agree with a 70-digit reference to 10⁻¹² from `df = 3` to 10¹⁴.
 - `regularized_lower_gamma` and `regularized_upper_gamma`: for a shape of 10 or more the prefix `x^a e^{−x} / Γ(a)` is formed
   without the cancellation of three terms of order `a ln a` (4·10⁻¹⁴ → 1.4·10⁻¹⁴ at a shape of 50, 1.4·10⁻¹⁰ → 4·10⁻¹³ at 10⁵,
   against mpmath at 50 digits, in the smaller tail).
