@@ -23,6 +23,12 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 - `regularized_lower_gamma` and `regularized_upper_gamma`: for a shape of 10 or more the prefix `x^a e^{−x} / Γ(a)` is formed
   without the cancellation of three terms of order `a ln a` (4·10⁻¹⁴ → 1.4·10⁻¹⁴ at a shape of 50, 1.4·10⁻¹⁰ → 4·10⁻¹³ at 10⁵,
   against mpmath at 50 digits, in the smaller tail).
+- The normal limits that took over the incomplete beta and gamma functions at a shape of 10⁷ now take over later, because
+  the fraction and the series beat them there: against 70-digit references the normal limit with its skewness term was off
+  by `1.2·10⁻⁵` of the smaller tail at a shape of 10⁷ (Wilson–Hilferty for the gamma, `8.5·10⁻⁷`), while the continued fraction
+  holds `~10⁻¹⁰` to 10¹¹ (beta) and `1.5·10⁻¹⁰` to 10¹⁰ (gamma, `10⁻¹¹` at 10⁸). The beta limit now starts at 3·10¹¹ and the
+  gamma limit at 10¹⁰; the iteration cap of the series and fractions, which gave out near a shape of 10⁹, is ten times higher
+  (a call at 10¹¹ takes a few milliseconds at the middle).
 
 ## [0.16.3] - 2026-11-10
 

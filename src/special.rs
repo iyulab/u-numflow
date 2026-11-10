@@ -473,11 +473,12 @@ fn ln_beta_large(p: f64, q: f64) -> f64 {
 /// # Accuracy
 /// Relative error of the value in the smaller tail, measured against 60-digit
 /// references over 541 points (shapes 0.05 to 9·10⁶, probabilities 10⁻¹² to
-/// 1 − 10⁻⁸):
+/// 1 − 10⁻⁸), and over 84 points at shapes 10⁷ to 10¹⁴:
 ///
 /// - below 6·10⁻¹⁴ where one shape is small (`min(a, b) ≤ 3`), at every shape
 ///   tested up to 5·10⁹ (the Student t with 10¹⁰ degrees of freedom);
-/// - below 2·10⁻¹³ with both shapes up to 10⁵, and below 2·10⁻¹² to 10⁷.
+/// - below 2·10⁻¹³ with both shapes up to 10⁵, below 2·10⁻¹² to 10⁷, and below
+///   10⁻¹⁰ to 10¹¹ (the long continued fraction rounds `~3·10⁻²¹ · shape`).
 ///
 /// A large `a` against a small `b` (`a ≥ 15`, `a ≥ 8b`, `b³ ≤ a²`) with `x` at
 /// or past the middle is evaluated from `1 − x` alone by an asymptotic expansion
@@ -487,7 +488,8 @@ fn ln_beta_large(p: f64, q: f64) -> f64 {
 /// taken as a deviation from the mean `a / (a + b)` (Stirling's series for the
 /// three gammas and the deviance of Loader 2000) rather than as three terms of
 /// order `a ln a` that cancel to the order of `ln a`. The normal approximation
-/// takes over at a shape of 10⁷ in both parameters.
+/// (with its skewness term, off by `1.2·10⁻⁹` of a far tail at 10¹²) takes over
+/// at a shape of 3·10¹¹ in both parameters, where it overtakes the fraction.
 ///
 /// # Examples
 /// ```
@@ -515,7 +517,7 @@ fn beta_cdf_pair(x: f64, y: f64, a: f64, b: f64) -> f64 {
     // Shapes this large: the prefix below is a difference of terms of order
     // `a ln a`, which rounding leaves with no digit; the distribution is a
     // normal one with a small skew.
-    if a.min(b) >= LARGE_SHAPE && a.max(b).is_finite() {
+    if a.min(b) >= LARGE_SHAPE_BETA && a.max(b).is_finite() {
         return beta_normal_approximation(x, a, b);
     }
 
@@ -613,14 +615,24 @@ fn ln_beta_density_over_a(x: f64, y: f64, a: f64, b: f64) -> f64 {
 fn iteration_limit(shape: f64) -> usize {
     // The cap keeps a shape beyond a double's integers from asking for
     // more terms than a loop can count.
-    200 + (12.0 * shape.sqrt()).min(100_000.0) as usize
+    200 + (12.0 * shape.sqrt()).min(1_000_000.0) as usize
 }
 
-/// From this shape on the incomplete beta and gamma functions are evaluated by
-/// their normal limit: below it the series and continued fractions lose at
-/// most `shape * 1e-16` to cancellation, above it that exceeds the `1/shape`
-/// error of the limit.
-const LARGE_SHAPE: f64 = 1e7;
+/// From this shape on (both parameters) the incomplete beta function is evaluated
+/// by its normal limit. Measured against 70-digit references the continued
+/// fraction holds `~1e-10` of the smaller tail to a shape of 10¹¹
+/// (`I_{1/2}(a, a) = 1/2` at 10¹¹ to 1.6·10⁻¹¹), where the limit with its skewness
+/// term is off by `1.2·10⁻⁵` at 10⁷, `1.2·10⁻⁹` at 10¹¹ and `1.2·10⁻¹⁰` at 10¹²:
+/// the rounding of the long fraction (`~3·10⁻²¹ · shape`) overtakes the limit's
+/// `O(1/shape)` at about 3·10¹¹.
+const LARGE_SHAPE_BETA: f64 = 3e11;
+
+/// From this shape on the incomplete gamma functions are evaluated by the
+/// Wilson–Hilferty normal limit. The series and the continued fraction hold
+/// `~1.5e-10` of the smaller tail to 10¹⁰ (70-digit references) where the limit
+/// is off by `1.5·10⁻⁸` at 10⁸ and `8·10⁻¹⁰` at 10¹⁰: the `~1.5·10⁻²⁰ · shape` of
+/// the long sums overtakes the limit's `O(1/shape)` at about 2·10¹⁰.
+const LARGE_SHAPE_GAMMA: f64 = 1e10;
 
 /// `I_x(a, b)` for large `a` and `b`: the normal approximation to the beta
 /// distribution with its first skewness term (Edgeworth),
@@ -785,6 +797,14 @@ fn beta_large_a_expansion(y: f64, a: f64, b: f64) -> Option<f64> {
 /// # Algorithm
 /// Uses series expansion for `x < a + 1`, continued fraction otherwise.
 ///
+/// # Accuracy
+/// Relative error of the value in the smaller tail, against 50- to 70-digit
+/// references: 1.4·10⁻¹⁴ at a shape of 50, 4·10⁻¹³ at 10⁵, 4.4·10⁻¹² at 10⁷ and
+/// 1.5·10⁻¹⁰ at 10¹⁰ (about `1.5·10⁻²⁰ · shape`, the rounding of a long sum): from a shape
+/// of 10 the prefix `x^a e^{−x} / Γ(a)` is formed without the cancellation of
+/// three terms of order `a ln a`. From a shape of 10¹⁰ the Wilson–Hilferty
+/// normal limit takes over (8·10⁻¹⁰ of the smaller tail there).
+///
 /// # Examples
 /// ```
 /// use u_numflow::special::regularized_lower_gamma;
@@ -799,7 +819,7 @@ pub fn regularized_lower_gamma(a: f64, x: f64) -> f64 {
     if x == f64::INFINITY {
         return 1.0;
     }
-    if a >= LARGE_SHAPE {
+    if a >= LARGE_SHAPE_GAMMA {
         return standard_normal_cdf(gamma_normal_score(a, x));
     }
     if x < a + 1.0 {
@@ -828,7 +848,7 @@ pub fn regularized_upper_gamma(a: f64, x: f64) -> f64 {
     if x == f64::INFINITY {
         return 0.0;
     }
-    if a >= LARGE_SHAPE {
+    if a >= LARGE_SHAPE_GAMMA {
         return standard_normal_cdf(-gamma_normal_score(a, x));
     }
     if x < a + 1.0 {
