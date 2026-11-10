@@ -285,6 +285,77 @@
         "seed": {}
       }
     },
+    "unumflow_distribution_survival": {
+      "properties": {
+        "distribution": {
+          "tag": "kind",
+          "variants": {
+            "beta": {
+              "properties": {
+                "alpha": {},
+                "beta": {}
+              }
+            },
+            "chi_squared": {
+              "properties": {
+                "k": {}
+              }
+            },
+            "exponential": {
+              "properties": {
+                "rate": {}
+              }
+            },
+            "gamma": {
+              "properties": {
+                "rate": {},
+                "shape": {}
+              }
+            },
+            "lognormal": {
+              "properties": {
+                "mu": {},
+                "sigma": {}
+              }
+            },
+            "normal": {
+              "properties": {
+                "mu": {},
+                "sigma": {}
+              }
+            },
+            "pert": {
+              "properties": {
+                "lambda": {},
+                "max": {},
+                "min": {},
+                "mode": {}
+              }
+            },
+            "triangular": {
+              "properties": {
+                "max": {},
+                "min": {},
+                "mode": {}
+              }
+            },
+            "uniform": {
+              "properties": {
+                "max": {},
+                "min": {}
+              }
+            },
+            "weibull": {
+              "properties": {
+                "scale": {},
+                "shape": {}
+              }
+            }
+          }
+        },
+        "x": {}
+      }
+    },
     "unumflow_interval_contains": {
       "properties": {
         "intervals": {},

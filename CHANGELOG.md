@@ -20,6 +20,11 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
   reliability past a few tens of mean lives — where the tail is still a number (down to 10⁻³⁰⁰ and below). Against 96 points of a
   60-digit reference the worst relative error is 9·10⁻¹⁴. `Pert::cdf` now hands the beta its position and the complement
   `(max − x)/(max − min)` each formed from the data, not `1 − t` of a rounded `t`.
+- The upper tail on the transports, where `1 − cdf` was all a caller had: WASM `distribution_survival(distribution, x)` (every
+  distribution kind; the Weibull's is its reliability), `t_distribution_sf`, `f_distribution_sf` and `chi_squared_sf` (the p-value
+  functions the Rust crate has had since 0.15.0, next to the `*_cdf` they pair with); the C entry point
+  `unumflow_distribution_survival` and `Distribution.Survival(x)` in .NET. A p-value below 1e-16 used to come back as 0 for every
+  caller that could only ask for the CDF.
 
 ### Changed
 

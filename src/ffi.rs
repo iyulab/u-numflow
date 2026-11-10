@@ -363,6 +363,19 @@ export!(
 );
 
 export!(
+    /// `P(X > x)`, the upper tail formed directly: `1 − cdf` is 0 where the CDF
+    /// is within 1e-16 of 1, and this is still a number to relative precision.
+    unumflow_distribution_survival,
+    |text| {
+        let r: DistAtX = parse(text)?;
+        let d = distribution(r.distribution)?;
+        let x = required("x", r.x)?;
+        check_finite("x", x).map_err(refused)?;
+        out(&Number { value: d.survival(x) })
+    }
+);
+
+export!(
     /// The `x` with `P(X ≤ x) = p`, for `p` strictly inside (0, 1).
     unumflow_distribution_quantile,
     |text| {
@@ -576,6 +589,14 @@ mod tests {
         );
         assert_eq!(s, 0, "{b}");
         assert!((b["value"].as_f64().unwrap() - 0.95).abs() < 1e-9);
+
+        // The upper tail is a number where `1 − cdf` is 0: Φ(−10) = 7.62e-24.
+        let (s, b) = call(
+            unumflow_distribution_survival,
+            r#"{"distribution": {"kind": "normal", "mu": 0, "sigma": 1}, "x": 10}"#,
+        );
+        assert_eq!(s, 0, "{b}");
+        assert!((b["value"].as_f64().unwrap() / 7.619_853_024_160_527e-24 - 1.0).abs() < 1e-12);
 
         let (s, b) = call(
             unumflow_distribution_moments,

@@ -124,6 +124,23 @@ public sealed class Distribution
         return Engine.Call(NativeInterop.unumflow_distribution_cdf, r).GetProperty("value").GetDouble();
     }
 
+    /// <summary>
+    /// P(X &gt; <paramref name="x"/>), the upper tail formed directly: <c>1 - Cdf(x)</c> is 0 once
+    /// the CDF is within 1e-16 of 1 (a normal beyond 8σ), and this is still a number there, to
+    /// relative precision. Use it for p-values.
+    /// </summary>
+    public double Survival(double x)
+    {
+        if (double.IsNegativeInfinity(x))
+            return 1.0;
+        if (double.IsPositiveInfinity(x))
+            return 0.0;
+        var r = Request();
+        Engine.Finite("x", x);
+        r["x"] = x;
+        return Engine.Call(NativeInterop.unumflow_distribution_survival, r).GetProperty("value").GetDouble();
+    }
+
     /// <summary>The x with P(X ≤ x) = <paramref name="p"/>, for p strictly inside (0, 1).</summary>
     public double Quantile(double p)
     {

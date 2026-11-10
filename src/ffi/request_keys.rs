@@ -312,6 +312,11 @@ pub(super) fn entry_points() -> Vec<(&'static str, Entry, Value)> {
             json!({ "distribution": normal, "x": 0.5 }),
         ),
         ep(
+            "unumflow_distribution_survival",
+            unumflow_distribution_survival,
+            json!({ "distribution": normal, "x": 0.5 }),
+        ),
+        ep(
             "unumflow_distribution_quantile",
             unumflow_distribution_quantile,
             json!({ "distribution": normal, "p": 0.9 }),
