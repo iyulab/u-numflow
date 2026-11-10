@@ -275,19 +275,128 @@ pub fn standard_normal_pdf(x: f64) -> f64 {
     FRAC_1_SQRT_2PI * exp_neg_half_square(x)
 }
 
-/// Lanczos approximation of ln Γ(x).
+/// `ζ(k) − 1` for `k = 2..=31`: the Taylor coefficients of `ln Γ(1 + z)` after the
+/// `ln(1 + z)` and linear terms are taken out (they sum to `2^−k`, so the series
+/// in `z / 2` converges at every `|z| <= ½`).
+#[allow(clippy::excessive_precision)]
+const ZETA_MINUS_ONE: [f64; 30] = [
+    0.644_934_066_848_226_436_47,
+    0.202_056_903_159_594_285_4,
+    0.082_323_233_711_138_191_516,
+    0.036_927_755_143_369_926_331,
+    0.017_343_061_984_449_139_715,
+    0.008_349_277_381_922_826_839_8,
+    0.004_077_356_197_944_339_378_7,
+    0.002_008_392_826_082_214_417_9,
+    0.000_994_575_127_818_085_337_15,
+    0.000_494_188_604_119_464_558_7,
+    0.000_246_086_553_308_048_298_64,
+    0.000_122_713_347_578_489_146_75,
+    0.000_061_248_135_058_704_829_259,
+    0.000_030_588_236_307_020_493_552,
+    0.000_015_282_259_408_651_871_733,
+    7.637_197_637_899_762_273_6e-6,
+    3.817_293_264_999_839_856_5e-6,
+    1.908_212_716_553_938_925_7e-6,
+    9.539_620_338_727_961_131_5e-7,
+    4.769_329_867_878_064_631_2e-7,
+    2.384_505_027_277_329_9e-7,
+    1.192_199_259_653_110_730_7e-7,
+    5.960_818_905_125_947_961_2e-8,
+    2.980_350_351_465_228_018_6e-8,
+    1.490_155_482_836_504_123_5e-8,
+    7.450_711_789_835_429_492e-9,
+    3.725_334_024_788_457_054_8e-9,
+    1.862_659_723_513_049_006_4e-9,
+    9.313_274_324_196_681_828_7e-10,
+    4.656_629_065_033_784_073e-10,
+];
+
+/// `1 − γ`, γ the Euler–Mascheroni constant.
+const ONE_MINUS_EULER_GAMMA: f64 = 0.422_784_335_098_467_13;
+
+/// `Σ_{k=2}^{31} (ζ(k) − 1)/k · (−z)^{k−2}`, for `|z| <= ½`: the series of
+/// [`zeta_series`] over `z²`, which a `z` below 1e-154 has underflowed.
+fn zeta_series_over_square(z: f64) -> f64 {
+    let w = -z;
+    let mut sum = 0.0;
+    for (j, c) in ZETA_MINUS_ONE.iter().enumerate().rev() {
+        sum = sum * w + c / (j + 2) as f64;
+    }
+    sum
+}
+
+/// `Σ_{k=2}^{31} (ζ(k) − 1)/k · (−z)^k`, for `|z| <= ½`.
+fn zeta_series(z: f64) -> f64 {
+    z * z * zeta_series_over_square(z)
+}
+
+/// `ln Γ(1 + z)` for `|z| <= ½` to a double's last digit — also near `z = 0`,
+/// where the function vanishes and a rational (Lanczos) approximation, good to
+/// an absolute `10⁻¹⁵`, has no digit left:
+/// `ln Γ(1 + z) = −ln(1 + z) + (1 − γ) z + Σ_{k≥2} (ζ(k) − 1)(−z)^k / k`.
+fn ln_gamma_1p(z: f64) -> f64 {
+    -z.ln_1p() + ONE_MINUS_EULER_GAMMA * z + zeta_series(z)
+}
+
+/// `(ln Γ(1 + 2δ) − 2 ln Γ(1 + δ)) / δ²` for `0 < δ <= ¼`: the numerator is of
+/// order `δ²` where each term is of order `δ`; the linear terms cancel exactly
+/// and the rest is `ln(1 + δ²/(1 + 2δ)) + Σ_{k≥2} (ζ(k) − 1)/k · (−1)^k ((2δ)^k − 2δ^k)`,
+/// each over `δ²` so that a `δ` of 1e-200 does not underflow its own square.
+/// It tends to `ζ(2)` as `δ → 0`.
+/// (The variance of a Weibull with shape `1/δ` is `δ² Γ(1 + δ)² · expm1(δ² q) / (δ² q) · q`.)
+pub(crate) fn ln_gamma_double_step_defect_per_square(delta: f64) -> f64 {
+    debug_assert!(delta > 0.0 && delta <= 0.25);
+    // `ln(1 + u) / δ²` with `u = δ² / (1 + 2δ)`: `ln_1p(u)/u → 1`.
+    let u = delta * delta / (1.0 + 2.0 * delta);
+    let log_part = if u > 0.0 { u.ln_1p() / u } else { 1.0 } / (1.0 + 2.0 * delta);
+    log_part + 4.0 * zeta_series_over_square(2.0 * delta) - 2.0 * zeta_series_over_square(delta)
+}
+
+/// `sin(πx)`, exact at the integers and half-integers and to a double's last
+/// digit near them (`(π·x).sin()` is not: it rounds `πx` first).
+fn sin_pi(x: f64) -> f64 {
+    let a = x.abs();
+    let mut r = a % 2.0;
+    let mut sign = 1.0;
+    if r > 1.0 {
+        r -= 1.0;
+        sign = -1.0;
+    }
+    if r > 0.5 {
+        r = 1.0 - r;
+    }
+    let s = (std::f64::consts::PI * r).sin();
+    if x < 0.0 {
+        -sign * s
+    } else {
+        sign * s
+    }
+}
+
+/// `ln |Γ(x)|`: Lanczos approximation for `x > 2.5`, the series about 1 and 2
+/// where the function vanishes, the reflection formula for `x <= 0`.
 ///
-/// Reference: Lanczos (1964), "A Precision Approximation of the Gamma
-/// Function", *SIAM Journal on Numerical Analysis* 1(1).
+/// References: Lanczos (1964), "A Precision Approximation of the Gamma
+/// Function", *SIAM Journal on Numerical Analysis* 1(1); Abramowitz & Stegun
+/// 6.1.33 for the series.
 ///
 /// # Accuracy
-/// Relative error < 2 × 10⁻¹⁰ for x > 0.
+/// A relative `~10⁻¹⁵` on `(0, 2.5]` — the series keeps its digits down to the
+/// zeros at 1 and 2, where `ln Γ(1 + 10⁻⁹)` is `−5.8·10⁻¹⁰` — and beyond, where
+/// the Lanczos form has an absolute error of a few `10⁻¹⁵` times `max(1, |ln Γ|)`.
+///
+/// # Special values
+/// `+∞` at `0` and at every negative integer (the poles of Γ), at `+∞` and at
+/// `−∞`; `NaN` for `NaN`.
 ///
 /// # Examples
 /// ```
 /// use u_numflow::special::ln_gamma;
 /// // Γ(5) = 24
 /// assert!((ln_gamma(5.0) - 24.0f64.ln()).abs() < 1e-10);
+/// // ln Γ(−0.5) = ln |−2√π|
+/// assert!((ln_gamma(-0.5) - (2.0 * std::f64::consts::PI.sqrt()).ln()).abs() < 1e-14);
 /// ```
 pub fn ln_gamma(x: f64) -> f64 {
     #[allow(clippy::excessive_precision)]
@@ -304,9 +413,31 @@ pub fn ln_gamma(x: f64) -> f64 {
     ];
     const G: f64 = 7.0;
 
+    if x.is_nan() {
+        return f64::NAN;
+    }
+    if x.is_infinite() {
+        return f64::INFINITY;
+    }
+    if x <= 0.0 {
+        // A pole at every non-positive integer.
+        if x == x.floor() {
+            return f64::INFINITY;
+        }
+        // Γ(x) Γ(1 − x) = π / sin(πx): ln|Γ(x)| = ln(π/|sin πx|) − ln Γ(1 − x).
+        return (std::f64::consts::PI / sin_pi(x).abs()).ln() - ln_gamma(1.0 - x);
+    }
     if x < 0.5 {
-        let pi = std::f64::consts::PI;
-        return (pi / (pi * x).sin()).ln() - ln_gamma(1.0 - x);
+        // ln Γ(x) = ln Γ(1 + x) − ln x: no cancellation, the first is small.
+        return ln_gamma_1p(x) - x.ln();
+    }
+    if x <= 1.5 {
+        return ln_gamma_1p(x - 1.0);
+    }
+    if x <= 2.5 {
+        // ln Γ(2 + z) = ln(1 + z) + ln Γ(1 + z).
+        let z = x - 2.0;
+        return z.ln_1p() + ln_gamma_1p(z);
     }
 
     let x = x - 1.0;
@@ -319,18 +450,70 @@ pub fn ln_gamma(x: f64) -> f64 {
     0.5 * (2.0 * std::f64::consts::PI).ln() + (x + 0.5) * t.ln() - t + sum.ln()
 }
 
-/// Gamma function Γ(x) = exp(ln_gamma(x)).
+/// Gamma function Γ(x), signed: negative between the poles at the negative
+/// integers where `⌈x⌉` is odd.
+///
+/// Formed as a product, not as `exp(ln_gamma(x))`, whose relative error is the
+/// absolute error of `ln Γ` — `10⁻¹³` at `x = 100`: the recurrence from the
+/// series on `(1.5, 2.5]` below 10, Stirling's `√(2π/x)·(x/e)^x·e^{c(x)}` from
+/// 10 (a few `10⁻¹⁶` relative to `x = 171`), the reflection formula
+/// `Γ(x) = π / (sin(πx) Γ(1 − x))` below 0.
+///
+/// # Special values
+/// `+∞` at `+0` and above 171.62 (the double range); `−∞` at `−0`; `NaN` at
+/// the negative integers (the two one-sided limits differ), at `−∞` and for `NaN`.
 ///
 /// # Examples
 /// ```
 /// use u_numflow::special::gamma;
 /// // Γ(5) = 4! = 24
-/// assert!((gamma(5.0) - 24.0).abs() < 1e-8);
+/// assert!((gamma(5.0) - 24.0).abs() < 1e-13);
 /// // Γ(0.5) = √π
-/// assert!((gamma(0.5) - std::f64::consts::PI.sqrt()).abs() < 1e-10);
+/// assert!((gamma(0.5) - std::f64::consts::PI.sqrt()).abs() < 1e-15);
+/// // Γ(−0.5) = −2√π
+/// assert!((gamma(-0.5) + 2.0 * std::f64::consts::PI.sqrt()).abs() < 1e-14);
 /// ```
 pub fn gamma(x: f64) -> f64 {
-    ln_gamma(x).exp()
+    if x.is_nan() || x == f64::NEG_INFINITY {
+        return f64::NAN;
+    }
+    if x == f64::INFINITY {
+        return f64::INFINITY;
+    }
+    if x == 0.0 {
+        return f64::INFINITY.copysign(x);
+    }
+    if x < 0.0 {
+        if x == x.floor() {
+            return f64::NAN;
+        }
+        return std::f64::consts::PI / (sin_pi(x) * gamma(1.0 - x));
+    }
+    if x < 0.5 {
+        // Γ(x) = Γ(1 + x) / x.
+        return ln_gamma_1p(x).exp() / x;
+    }
+    if x <= 1.5 {
+        return ln_gamma_1p(x - 1.0).exp();
+    }
+    if x < 10.0 {
+        // Γ(x) = (x − 1)(x − 2)…(x − m) Γ(x − m) with x − m in (1.5, 2.5].
+        let mut y = x;
+        let mut product = 1.0;
+        while y > 2.5 {
+            y -= 1.0;
+            product *= y;
+        }
+        let z = y - 2.0;
+        return product * (1.0 + z) * ln_gamma_1p(z).exp();
+    }
+    if x > 171.7 {
+        return f64::INFINITY;
+    }
+    // (x/e)^x as two factors that stay in range: x^(x/2) e^(−x/2), squared.
+    let half = 0.5 * x;
+    let s = x.powf(half) * (-half).exp();
+    (std::f64::consts::TAU / x).sqrt() * s * s * stirling_correction(x).exp()
 }
 
 // ============================================================================

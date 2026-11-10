@@ -785,9 +785,30 @@ impl Weibull {
     }
 
     /// Variance = η²·[Γ(1 + 2/β) − Γ(1 + 1/β)²].
+    ///
+    /// For a large shape the two terms are within `1/β²` of each other and the
+    /// difference of the two gamma values keeps no digit (`10⁻⁹` of the answer
+    /// at β = 10³, nothing at 10⁶); it is formed as
+    /// `Γ(1 + 1/β)² · expm1(ln Γ(1 + 2/β) − 2 ln Γ(1 + 1/β))` with the exponent
+    /// taken from its own series.
     pub fn variance(&self) -> f64 {
-        let g1 = special::gamma(1.0 + 1.0 / self.shape);
-        let g2 = special::gamma(1.0 + 2.0 / self.shape);
+        let delta = 1.0 / self.shape;
+        let g1 = special::gamma(1.0 + delta);
+        if delta <= 0.25 {
+            // `expm1(d)` with `d = δ² q`, formed over `δ²` — `δ²` of a shape
+            // beyond 1e154 is below the double range, the variance is not.
+            let q = special::ln_gamma_double_step_defect_per_square(delta);
+            let d = delta * delta * q;
+            let growth = if d.abs() < 1e-300 {
+                1.0
+            } else {
+                d.exp_m1() / d
+            };
+            let spread = self.scale * delta;
+            return spread * spread * g1 * g1 * q * growth;
+        }
+        // A shape below 4: the two terms differ by a factor, nothing cancels.
+        let g2 = special::gamma(1.0 + 2.0 * delta);
         self.scale * self.scale * (g2 - g1 * g1)
     }
 

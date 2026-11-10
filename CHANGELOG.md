@@ -54,6 +54,23 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
   gamma limit at 10¹⁰; the iteration cap of the series and fractions, which gave out near a shape of 10⁹, is ten times higher
   (a call at 10¹¹ takes a few milliseconds at the middle).
 
+### Fixed
+
+- `special::ln_gamma` kept no digit near its zeros at 1 and 2: the Lanczos form has an absolute error of a few 10⁻¹⁵, so
+  `ln_gamma(1 + 10⁻⁹)` (−5.77·10⁻¹⁰) was off by 1.4·10⁻⁶ of itself — past the documented relative bound of 2·10⁻¹⁰ for `x > 0` — and
+  `ln_gamma(1 + 10⁻⁶)` by 4·10⁻¹⁰. On `(0, 2.5]` it is now the series `−ln(1 + z) + (1 − γ)z + Σ (ζ(k) − 1)(−z)^k / k` about 1 and 2 (a relative
+  10⁻¹⁵, 178 points against an 80-digit reference, the worst 1.4·10⁻¹⁵); beyond, the Lanczos form as before.
+  For a non-positive argument it is `ln |Γ(x)|` by the reflection formula (it was `NaN` wherever Γ is negative and a rounding
+  artefact at the negative integers), `+∞` at the poles.
+- `special::gamma` was `NaN` for every negative argument that is not an integer (Γ(−0.5) = −3.5449…) and a number of the order of
+  10¹⁵ at the negative integers; it is signed by the reflection formula, `NaN` at the poles, `+∞` at `+0` and `−∞` at `−0`.
+  Above 10 it is no longer `exp(ln_gamma(x))`, whose relative error is the absolute error of `ln Γ` (1.1·10⁻¹³ at `x = 100`,
+  2·10⁻¹³ at 171): a Stirling product holds a few 10⁻¹⁶ to the end of the double range.
+- `Weibull::variance` lost its digits at a large shape: `Γ(1 + 2/β) − Γ(1 + 1/β)²` is a difference of two numbers within `1/β²` of each other
+  (an error of 10⁻⁹ of the answer at β = 10³ and none of its digits at 10⁶). It is now `Γ(1 + 1/β)² · expm1(ln Γ(1 + 2/β) − 2 ln Γ(1 + 1/β))` with the
+  exponent from its own series (taken over `1/β²`, so a shape beyond 10¹⁵⁴, whose square is below the double range, still gives
+  `η²·ζ(2)/β²`), a relative 10⁻¹⁵ at every shape from 4 to 10³⁰⁰.
+
 ## [0.16.3] - 2026-11-10
 
 ### Added
