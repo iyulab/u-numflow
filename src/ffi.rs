@@ -480,7 +480,8 @@ export!(
     unumflow_unit_convert,
     |text| {
         let r: Convert = parse(text)?;
-        let value = convert_units(r.value, &r.from, &r.to, &r.definitions, false).map_err(refused)?;
+        let value =
+            convert_units(r.value, &r.from, &r.to, &r.definitions, false).map_err(refused)?;
         out(&Number { value })
     }
 );
@@ -491,7 +492,8 @@ export!(
     unumflow_unit_convert_difference,
     |text| {
         let r: Convert = parse(text)?;
-        let value = convert_units(r.value, &r.from, &r.to, &r.definitions, true).map_err(refused)?;
+        let value =
+            convert_units(r.value, &r.from, &r.to, &r.definitions, true).map_err(refused)?;
         out(&Number { value })
     }
 );
