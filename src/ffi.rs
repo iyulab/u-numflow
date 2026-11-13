@@ -371,7 +371,9 @@ export!(
         let d = distribution(r.distribution)?;
         let x = required("x", r.x)?;
         check_finite("x", x).map_err(refused)?;
-        out(&Number { value: d.survival(x) })
+        out(&Number {
+            value: d.survival(x),
+        })
     }
 );
 
