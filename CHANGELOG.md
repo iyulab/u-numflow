@@ -73,6 +73,13 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
   exponent from its own series (taken over `1/β²`, so a shape beyond 10¹⁵⁴, whose square is below the double range, still gives
   `η²·ζ(2)/β²`), a relative 10⁻¹⁵ at every shape from 4 to 10³⁰⁰.
 
+## [UNumflow 0.9.0] - 2026-11-16
+
+The .NET client; the crate is 0.17.0. `Distribution.Survival(x)` is new: the upper tail of any distribution kind formed
+directly (the Weibull's is its reliability), where `1 − Cdf(x)` is 0 once the CDF is within 10⁻¹⁶ of 1. The package carries the
+native library built from 0.17.0, so the Student t, F and beta CDFs and quantiles hold their digits at large shapes and
+degrees of freedom, and the gamma, chi-squared and PERT upper tails are no longer rounded to 0. No existing .NET type changed.
+
 ## [0.16.3] - 2026-11-10
 
 ### Added
