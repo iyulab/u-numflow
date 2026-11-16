@@ -8,6 +8,8 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-11-16
+
 ### Added
 
 - `BetaDistribution::survival(x)`: the upper tail `1 − I_x(α, β) = I_{1−x}(β, α)` formed directly, like `ExponentialDistribution::survival`.
