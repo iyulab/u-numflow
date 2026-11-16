@@ -829,6 +829,23 @@ impl Distribution {
         each!(self, d => d.cdf(x))
     }
 
+    /// `P(X > x)`, the upper tail formed directly (`1 − cdf(x)` has no digits
+    /// where the CDF is within 1e-16 of 1). The Weibull's is its `reliability`.
+    pub(crate) fn survival(&self, x: f64) -> f64 {
+        match self {
+            Distribution::Uniform(d) => d.survival(x),
+            Distribution::Triangular(d) => d.survival(x),
+            Distribution::Pert(d) => d.survival(x),
+            Distribution::Normal(d) => d.survival(x),
+            Distribution::LogNormal(d) => d.survival(x),
+            Distribution::Weibull(d) => d.reliability(x),
+            Distribution::Exponential(d) => d.survival(x),
+            Distribution::Gamma(d) => d.survival(x),
+            Distribution::Beta(d) => d.survival(x),
+            Distribution::ChiSquared(d) => d.survival(x),
+        }
+    }
+
     /// The `x` with `P(X ≤ x) = p`, for `p` in `(0, 1)`.
     pub(crate) fn quantile(&self, p: f64) -> f64 {
         each!(self, d => d.quantile(p))

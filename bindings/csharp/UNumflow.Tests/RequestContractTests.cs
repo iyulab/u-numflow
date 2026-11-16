@@ -46,6 +46,7 @@ public class RequestContractTests
             var distribution = d.Value();
             Assert.Equal(d.Key, Distribution.WireName(distribution.Kind));
             distribution.Cdf(distribution.Mean);
+            distribution.Survival(distribution.Mean);
             distribution.Quantile(0.9);
             distribution.Sample(3, seed: 7);
         }))

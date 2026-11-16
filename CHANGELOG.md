@@ -8,6 +8,69 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ## [Unreleased]
 
+### Added
+
+- `BetaDistribution::survival(x)`: the upper tail `1 − I_x(α, β) = I_{1−x}(β, α)` formed directly, like `ExponentialDistribution::survival`.
+  `1 − cdf(x)` has no digits left once the CDF is within 10⁻¹⁶ of 1, and the upper tail of a Beta with a large β (the mass near
+  0) is far below that; the complement `1 − x` is the rounded one and the evaluation is built from the exact one.
+
+- `survival(x)` on `Normal`, `LogNormal`, `GammaDistribution`, `ChiSquared`, `Pert`, `Uniform` and `Triangular`, the upper tail
+  formed directly next to the `cdf` it pairs with (`Exponential`, `Weibull::reliability` and `BetaDistribution` already had one).
+  `1 − cdf(x)` is 0 once the CDF is within 10⁻¹⁶ of 1 — a normal beyond 8σ, a chi-squared p-value below 10⁻¹⁶, a gamma
+  reliability past a few tens of mean lives — where the tail is still a number (down to 10⁻³⁰⁰ and below). Against 96 points of a
+  60-digit reference the worst relative error is 9·10⁻¹⁴. `Pert::cdf` now hands the beta its position and the complement
+  `(max − x)/(max − min)` each formed from the data, not `1 − t` of a rounded `t`.
+- The upper tail on the transports, where `1 − cdf` was all a caller had: WASM `distribution_survival(distribution, x)` (every
+  distribution kind; the Weibull's is its reliability), `t_distribution_sf`, `f_distribution_sf` and `chi_squared_sf` (the p-value
+  functions the Rust crate has had since 0.15.0, next to the `*_cdf` they pair with); the C entry point
+  `unumflow_distribution_survival` and `Distribution.Survival(x)` in .NET. A p-value below 1e-16 used to come back as 0 for every
+  caller that could only ask for the CDF.
+
+### Changed
+
+- `special::regularized_incomplete_beta` (and the t, F and beta CDFs and quantiles built on it) holds its digits at large
+  shapes. Past a shape of about 10³ the error of a value in the smaller tail used to grow with the shape,
+  `≈ 3·10⁻¹⁶ · max(a, b)` (documented since 0.16.2), for two reasons now removed. (1) A large `a` against a small `b` (the
+  Student t with a large sample, an F with a large denominator): the continued fraction was handed an `x` that is `1 −` a
+  small number, rounded, and a large `a` multiplies that rounding (6·10⁻⁷ at a shape of 5·10⁹). Where `a ≥ 15`, `a ≥ 8b`,
+  `b³ ≤ a²` and `x` is at or past the middle, the value now comes from the asymptotic expansion in `1 − x` (Didonato &
+  Morris, ACM TOMS 708), built from `1 − x` alone. (2) With both shapes large, the prefix `x^a (1 − x)^b / B(a, b)` was a sum of
+  terms of order `a ln a` that cancel to the order of `ln a` (4·10⁻¹³ at 10³, 2·10⁻⁹ at 9·10⁶); it is now taken as a deviation from
+  the mean. Against 541 points of a 60-digit reference grid (shapes 0.05 to 9·10⁶, probabilities 10⁻¹² to 1 − 10⁻⁸) the worst
+  error is 6·10⁻¹⁴ where one shape is small (up to 5·10⁹), 2·10⁻¹³ with both shapes up to 10⁵ and 2·10⁻¹² to 10⁷.
+- `t_distribution_cdf` / `t_distribution_sf` and `f_distribution_cdf` / `f_distribution_sf` (and with them every p-value and
+  confidence interval built on them) pass the incomplete beta the pair `x = df / (df + t²)`, `1 − x = t² / (df + t²)` each
+  formed directly instead of `x` alone: the beta rebuilt `1 − x` from a rounded `x`, and a large number of degrees of freedom
+  multiplied that rounding by `df`. The quantile-to-CDF round trip of the t distribution was off by 7·10⁻¹² at `df = 10⁵`,
+  2.4·10⁻⁸ at 10⁹, 5.5·10⁻⁵ at 10¹² and 2.9·10⁻³ at 10¹⁴; it is now below 3·10⁻¹³ at every one of them, and the CDF and survival
+  function agree with a 70-digit reference to 10⁻¹² from `df = 3` to 10¹⁴.
+- `regularized_lower_gamma` and `regularized_upper_gamma`: for a shape of 10 or more the prefix `x^a e^{−x} / Γ(a)` is formed
+  without the cancellation of three terms of order `a ln a` (4·10⁻¹⁴ → 1.4·10⁻¹⁴ at a shape of 50, 1.4·10⁻¹⁰ → 4·10⁻¹³ at 10⁵,
+  against mpmath at 50 digits, in the smaller tail).
+- The normal limits that took over the incomplete beta and gamma functions at a shape of 10⁷ now take over later, because
+  the fraction and the series beat them there: against 70-digit references the normal limit with its skewness term was off
+  by `1.2·10⁻⁵` of the smaller tail at a shape of 10⁷ (Wilson–Hilferty for the gamma, `8.5·10⁻⁷`), while the continued fraction
+  holds `~10⁻¹⁰` to 10¹¹ (beta) and `1.5·10⁻¹⁰` to 10¹⁰ (gamma, `10⁻¹¹` at 10⁸). The beta limit now starts at 3·10¹¹ and the
+  gamma limit at 10¹⁰; the iteration cap of the series and fractions, which gave out near a shape of 10⁹, is ten times higher
+  (a call at 10¹¹ takes a few milliseconds at the middle).
+
+### Fixed
+
+- `special::ln_gamma` kept no digit near its zeros at 1 and 2: the Lanczos form has an absolute error of a few 10⁻¹⁵, so
+  `ln_gamma(1 + 10⁻⁹)` (−5.77·10⁻¹⁰) was off by 1.4·10⁻⁶ of itself — past the documented relative bound of 2·10⁻¹⁰ for `x > 0` — and
+  `ln_gamma(1 + 10⁻⁶)` by 4·10⁻¹⁰. On `(0, 2.5]` it is now the series `−ln(1 + z) + (1 − γ)z + Σ (ζ(k) − 1)(−z)^k / k` about 1 and 2 (a relative
+  10⁻¹⁵, 178 points against an 80-digit reference, the worst 1.4·10⁻¹⁵); beyond, the Lanczos form as before.
+  For a non-positive argument it is `ln |Γ(x)|` by the reflection formula (it was `NaN` wherever Γ is negative and a rounding
+  artefact at the negative integers), `+∞` at the poles.
+- `special::gamma` was `NaN` for every negative argument that is not an integer (Γ(−0.5) = −3.5449…) and a number of the order of
+  10¹⁵ at the negative integers; it is signed by the reflection formula, `NaN` at the poles, `+∞` at `+0` and `−∞` at `−0`.
+  Above 10 it is no longer `exp(ln_gamma(x))`, whose relative error is the absolute error of `ln Γ` (1.1·10⁻¹³ at `x = 100`,
+  2·10⁻¹³ at 171): a Stirling product holds a few 10⁻¹⁶ to the end of the double range.
+- `Weibull::variance` lost its digits at a large shape: `Γ(1 + 2/β) − Γ(1 + 1/β)²` is a difference of two numbers within `1/β²` of each other
+  (an error of 10⁻⁹ of the answer at β = 10³ and none of its digits at 10⁶). It is now `Γ(1 + 1/β)² · expm1(ln Γ(1 + 2/β) − 2 ln Γ(1 + 1/β))` with the
+  exponent from its own series (taken over `1/β²`, so a shape beyond 10¹⁵⁴, whose square is below the double range, still gives
+  `η²·ζ(2)/β²`), a relative 10⁻¹⁵ at every shape from 4 to 10³⁰⁰.
+
 ## [0.16.3] - 2026-11-10
 
 ### Added

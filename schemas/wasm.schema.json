@@ -430,6 +430,29 @@
       "format": "double",
       "type": "number"
     },
+    "chi_squared_sf.input": {
+      "additionalProperties": false,
+      "description": "The arguments of chi_squared_sf(x, k), by name; the WebAssembly function takes them in that order.",
+      "properties": {
+        "k": {
+          "format": "double",
+          "type": "number"
+        },
+        "x": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "x",
+        "k"
+      ],
+      "type": "object"
+    },
+    "chi_squared_sf.output": {
+      "format": "double",
+      "type": "number"
+    },
     "distribution_cdf.input": {
       "additionalProperties": false,
       "description": "The arguments of distribution_cdf(distribution, x), by name; the WebAssembly function takes them in that order.",
@@ -522,6 +545,28 @@
       },
       "type": "array"
     },
+    "distribution_survival.input": {
+      "additionalProperties": false,
+      "description": "The arguments of distribution_survival(distribution, x), by name; the WebAssembly function takes them in that order.",
+      "properties": {
+        "distribution": {
+          "$ref": "#/$defs/DistributionSpec"
+        },
+        "x": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "distribution",
+        "x"
+      ],
+      "type": "object"
+    },
+    "distribution_survival.output": {
+      "format": "double",
+      "type": "number"
+    },
     "estimate_lambda.input": {
       "additionalProperties": false,
       "description": "The arguments of estimate_lambda(data, lambda_min, lambda_max), by name; the WebAssembly function takes them in that order.",
@@ -605,6 +650,34 @@
       "type": "object"
     },
     "f_distribution_quantile.output": {
+      "format": "double",
+      "type": "number"
+    },
+    "f_distribution_sf.input": {
+      "additionalProperties": false,
+      "description": "The arguments of f_distribution_sf(x, df1, df2), by name; the WebAssembly function takes them in that order.",
+      "properties": {
+        "df1": {
+          "format": "double",
+          "type": "number"
+        },
+        "df2": {
+          "format": "double",
+          "type": "number"
+        },
+        "x": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "x",
+        "df1",
+        "df2"
+      ],
+      "type": "object"
+    },
+    "f_distribution_sf.output": {
       "format": "double",
       "type": "number"
     },
@@ -1097,6 +1170,29 @@
       "type": "object"
     },
     "t_distribution_quantile.output": {
+      "format": "double",
+      "type": "number"
+    },
+    "t_distribution_sf.input": {
+      "additionalProperties": false,
+      "description": "The arguments of t_distribution_sf(t, df), by name; the WebAssembly function takes them in that order.",
+      "properties": {
+        "df": {
+          "format": "double",
+          "type": "number"
+        },
+        "t": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "t",
+        "df"
+      ],
+      "type": "object"
+    },
+    "t_distribution_sf.output": {
       "format": "double",
       "type": "number"
     },

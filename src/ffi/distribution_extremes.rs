@@ -71,6 +71,11 @@ fn every_distribution_at_its_extremes_answers_without_nan() {
                 super::unumflow_distribution_cdf,
                 json!({ "distribution": d, "x": x }),
             ));
+            requests.push((
+                "survival",
+                super::unumflow_distribution_survival,
+                json!({ "distribution": d, "x": x }),
+            ));
         }
         for p in [1e-300, 1e-12, 0.5, 1.0 - 1e-12] {
             requests.push((

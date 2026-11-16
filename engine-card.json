@@ -639,6 +639,55 @@
       }
     },
     {
+      "id": "t_distribution_sf",
+      "summary": "Student's t survival function P(T > t) for df > 0 degrees of freedom, computed directly so a small p-value keeps its significant digits (a two-sided p-value is 2 * sf(|t|)).",
+      "input": {
+        "schema": "schemas/wasm.schema.json#/$defs/t_distribution_sf.input",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "output": {
+        "schema": "schemas/wasm.schema.json#/$defs/t_distribution_sf.output",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "contract_test": "src/wasm.rs::engine_card_tests::every_export_is_a_card_operation_with_its_arguments",
+      "hints": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      },
+      "effects": {
+        "filesystem": "none",
+        "network": "none",
+        "clock": "none",
+        "randomness": "none"
+      },
+      "determinism": {
+        "kind": "deterministic",
+        "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_unseeded_randomness"
+      },
+      "validation": {
+        "status": "partial",
+        "checks": [
+          {
+            "claim": "The t upper tail matches the reference, including tails below 1e-16 where one minus the CDF is zero.",
+            "reference_kind": "reference_implementation",
+            "reference": "SciPy 1.17.1, scipy.stats.t.sf",
+            "method": "compares the value with the reference implementation's at the same arguments",
+            "tolerance": "1e-12 relative",
+            "test": "src/special.rs::scipy_reference::t_distribution_sf_reproduces_scipy"
+          }
+        ],
+        "limits": [
+          "Checked against the reference above for the cases that test lists; other data are not compared."
+        ]
+      },
+      "performance": {
+        "status": "none",
+        "complexity": "O(1): a special-function evaluation."
+      }
+    },
+    {
       "id": "t_distribution_quantile",
       "summary": "Student's t quantile: the t with P(T <= t) = p, for p strictly between 0 and 1 and df > 0.",
       "input": {
@@ -737,6 +786,55 @@
       }
     },
     {
+      "id": "f_distribution_sf",
+      "summary": "The F survival function P(X > x) for df1, df2 > 0 (1 for x <= 0), computed directly so the p-value of an F test keeps its significant digits.",
+      "input": {
+        "schema": "schemas/wasm.schema.json#/$defs/f_distribution_sf.input",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "output": {
+        "schema": "schemas/wasm.schema.json#/$defs/f_distribution_sf.output",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "contract_test": "src/wasm.rs::engine_card_tests::every_export_is_a_card_operation_with_its_arguments",
+      "hints": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      },
+      "effects": {
+        "filesystem": "none",
+        "network": "none",
+        "clock": "none",
+        "randomness": "none"
+      },
+      "determinism": {
+        "kind": "deterministic",
+        "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_unseeded_randomness"
+      },
+      "validation": {
+        "status": "partial",
+        "checks": [
+          {
+            "claim": "The F upper tail matches the reference, including tails below 1e-16 where one minus the CDF is zero.",
+            "reference_kind": "reference_implementation",
+            "reference": "SciPy 1.17.1, scipy.stats.f.sf",
+            "method": "compares the value with the reference implementation's at the same arguments",
+            "tolerance": "1e-12 relative",
+            "test": "src/special.rs::scipy_reference::f_distribution_sf_reproduces_scipy"
+          }
+        ],
+        "limits": [
+          "Checked against the reference above for the cases that test lists; other data are not compared."
+        ]
+      },
+      "performance": {
+        "status": "none",
+        "complexity": "O(1): a special-function evaluation."
+      }
+    },
+    {
       "id": "f_distribution_quantile",
       "summary": "The F quantile: the x with P(X <= x) = p, for p strictly between 0 and 1 and df1, df2 > 0.",
       "input": {
@@ -823,6 +921,55 @@
             "method": "compares the value with the reference implementation's at the same arguments",
             "tolerance": "1e-12",
             "test": "src/special.rs::scipy_reference::t_f_and_chi_squared_distributions_reproduce_scipy"
+          }
+        ],
+        "limits": [
+          "Checked against the reference above for the cases that test lists; other data are not compared."
+        ]
+      },
+      "performance": {
+        "status": "none",
+        "complexity": "O(1): a special-function evaluation."
+      }
+    },
+    {
+      "id": "chi_squared_sf",
+      "summary": "The chi-squared survival function P(X > x) for k > 0 degrees of freedom (1 for x <= 0), computed directly so the p-value of a chi-squared test keeps its significant digits.",
+      "input": {
+        "schema": "schemas/wasm.schema.json#/$defs/chi_squared_sf.input",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "output": {
+        "schema": "schemas/wasm.schema.json#/$defs/chi_squared_sf.output",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "contract_test": "src/wasm.rs::engine_card_tests::every_export_is_a_card_operation_with_its_arguments",
+      "hints": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      },
+      "effects": {
+        "filesystem": "none",
+        "network": "none",
+        "clock": "none",
+        "randomness": "none"
+      },
+      "determinism": {
+        "kind": "deterministic",
+        "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_unseeded_randomness"
+      },
+      "validation": {
+        "status": "partial",
+        "checks": [
+          {
+            "claim": "The chi-squared upper tail matches the reference, including tails below 1e-16 where one minus the CDF is zero.",
+            "reference_kind": "reference_implementation",
+            "reference": "SciPy 1.17.1, scipy.stats.chi2.sf",
+            "method": "compares the value with the reference implementation's at the same arguments",
+            "tolerance": "1e-12 relative",
+            "test": "src/special.rs::scipy_reference::chi_squared_sf_reproduces_scipy"
           }
         ],
         "limits": [
@@ -978,6 +1125,55 @@
             "method": "compares the value with the reference implementation's at the same arguments",
             "tolerance": "1e-12",
             "test": "src/distributions.rs::scipy_reference::beta_pert_reproduces_the_scaled_beta_of_scipy"
+          }
+        ],
+        "limits": [
+          "Checked against the reference above for the cases that test lists; other data are not compared."
+        ]
+      },
+      "performance": {
+        "status": "none",
+        "complexity": "O(1): a special-function evaluation."
+      }
+    },
+    {
+      "id": "distribution_survival",
+      "summary": "P(X > x) for a parametric distribution, the upper tail formed directly so it keeps its significant digits where one minus the CDF is zero (a normal beyond 8 sigma). The distribution is {kind, ...parameters}: uniform, triangular, pert, normal, lognormal, weibull, exponential, gamma, beta or chi_squared.",
+      "input": {
+        "schema": "schemas/wasm.schema.json#/$defs/distribution_survival.input",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "output": {
+        "schema": "schemas/wasm.schema.json#/$defs/distribution_survival.output",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "contract_test": "src/wasm.rs::engine_card_tests::every_export_is_a_card_operation_with_its_arguments",
+      "hints": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": true,
+        "open_world": false
+      },
+      "effects": {
+        "filesystem": "none",
+        "network": "none",
+        "clock": "none",
+        "randomness": "none"
+      },
+      "determinism": {
+        "kind": "deterministic",
+        "test": "src/wasm.rs::engine_card_tests::the_crate_reads_no_clock_and_no_unseeded_randomness"
+      },
+      "validation": {
+        "status": "partial",
+        "checks": [
+          {
+            "claim": "The upper tail of the normal, lognormal, gamma, chi-squared, Beta-PERT, uniform and triangular distributions matches a 60-digit reference to 1e-12 relative, down to tails of 1e-268.",
+            "reference_kind": "reference_implementation",
+            "reference": "mpmath at 60 digits (erfc, gammainc, betainc) and exact rational arithmetic from the same double inputs",
+            "method": "compares the value with the reference computed from the same inputs",
+            "tolerance": "1e-12 relative",
+            "test": "tests/distribution_survival.rs::the_survival_function_matches_a_reference_to_relative_precision"
           }
         ],
         "limits": [

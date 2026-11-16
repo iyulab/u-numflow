@@ -39,6 +39,9 @@ var chi = Distribution.ChiSquared(4);
 double critical = chi.Quantile(0.95);       // 9.4877…
 double p = chi.Cdf(critical);               // 0.95
 
+// A p-value: the upper tail keeps its digits where 1 - Cdf is zero
+double tail = Distribution.Normal(0, 1).Survival(10);   // 7.62e-24
+
 // Reproducible samples
 double[] lives = Distribution.Weibull(shape: 2, scale: 100).Sample(1000, seed: 42);
 

@@ -17,12 +17,13 @@
 //! - `estimate_lambda(data, lambda_min, lambda_max)` → `{ lambda, at_bound }` (or throws)
 //! - `rfft(data)` → `Vec<f64>` — DFT of a real sequence, bins `0..=n/2` interleaved `[re0, im0, re1, im1, …]`
 //! - `inverse_normal_cdf(p)` → `f64` — standard normal quantile (throws outside `(0, 1)`)
-//! - `t_distribution_cdf(t, df)` / `t_distribution_quantile(p, df)` → `f64` (throw on an invalid argument)
-//! - `f_distribution_cdf(x, df1, df2)` / `f_distribution_quantile(p, df1, df2)` → `f64` (same)
-//! - `chi_squared_cdf(x, k)` / `chi_squared_quantile(p, k)` → `f64` (same)
+//! - `t_distribution_cdf(t, df)` / `t_distribution_sf(t, df)` / `t_distribution_quantile(p, df)` → `f64` (throw on an invalid argument)
+//! - `f_distribution_cdf(x, df1, df2)` / `f_distribution_sf(x, df1, df2)` / `f_distribution_quantile(p, df1, df2)` → `f64` (same)
+//! - `chi_squared_cdf(x, k)` / `chi_squared_sf(x, k)` / `chi_squared_quantile(p, k)` → `f64` (same)
 //! - `distribution_moments(distribution)` → `{ mean, variance }`
-//! - `distribution_cdf(distribution, x)` · `distribution_quantile(distribution, p)` →
-//!   `f64`; `distribution_sample(distribution, n, seed)` → `Float64Array`
+//! - `distribution_cdf(distribution, x)` · `distribution_survival(distribution, x)` ·
+//!   `distribution_quantile(distribution, p)` → `f64`;
+//!   `distribution_sample(distribution, n, seed)` → `Float64Array`
 //! - `interval_normalize(intervals)` · `interval_union(a, b)` ·
 //!   `interval_intersection(a, b)` · `interval_difference(a, b)` →
 //!   `[number, number][]` in normal form; `interval_measure(intervals)` → `f64`
@@ -464,6 +465,19 @@ pub fn t_distribution_cdf(t: f64, df: f64) -> Result<f64, JsValue> {
     Ok(crate::special::t_distribution_cdf(t, df))
 }
 
+/// Student's t upper tail: `P(T > t)` for `T ~ t(df)`, to relative precision —
+/// `1 − t_distribution_cdf(…)` is 0 below 1e-16. A two-sided p-value is
+/// `2 · t_distribution_sf(|t|, df)`.
+///
+/// # Errors
+/// Throws if `t` is NaN or `df` is not a finite number > 0.
+#[wasm_bindgen]
+pub fn t_distribution_sf(t: f64, df: f64) -> Result<f64, JsValue> {
+    check_finite("t", t)?;
+    check_df("df", df)?;
+    Ok(crate::special::t_distribution_sf(t, df))
+}
+
 /// Student's t quantile: the `t` with `P(T ≤ t) = p`. A two-sided critical
 /// value at level α is `t_distribution_quantile(1 − α/2, df)`.
 ///
@@ -489,6 +503,20 @@ pub fn f_distribution_cdf(x: f64, df1: f64, df2: f64) -> Result<f64, JsValue> {
     Ok(crate::special::f_distribution_cdf(x, df1, df2))
 }
 
+/// F upper tail: `P(X > x)` for `X ~ F(df1, df2)` (`1` for `x ≤ 0`) — the
+/// p-value of an F test, to relative precision where `1 − f_distribution_cdf(…)`
+/// is 0.
+///
+/// # Errors
+/// Throws if `x` is NaN, or `df1`/`df2` is not a finite number > 0.
+#[wasm_bindgen]
+pub fn f_distribution_sf(x: f64, df1: f64, df2: f64) -> Result<f64, JsValue> {
+    check_finite("x", x)?;
+    check_df("df1", df1)?;
+    check_df("df2", df2)?;
+    Ok(crate::special::f_distribution_sf(x, df1, df2))
+}
+
 /// F quantile: the `x` with `P(X ≤ x) = p` for `X ~ F(df1, df2)`.
 ///
 /// # Errors
@@ -511,6 +539,19 @@ pub fn chi_squared_cdf(x: f64, k: f64) -> Result<f64, JsValue> {
     check_finite("x", x)?;
     check_df("k", k)?;
     Ok(crate::special::chi_squared_cdf(x, k))
+}
+
+/// Chi-squared upper tail: `P(X > x)` for `X ~ χ²(k)` (`1` for `x ≤ 0`) — the
+/// p-value of a chi-squared test, to relative precision where
+/// `1 − chi_squared_cdf(…)` is 0.
+///
+/// # Errors
+/// Throws if `x` is NaN or `k` is not a finite number > 0.
+#[wasm_bindgen]
+pub fn chi_squared_sf(x: f64, k: f64) -> Result<f64, JsValue> {
+    check_finite("x", x)?;
+    check_df("k", k)?;
+    Ok(crate::special::chi_squared_sf(x, k))
 }
 
 /// Chi-squared quantile: the `x` with `P(X ≤ x) = p` for `X ~ χ²(k)`.
@@ -634,6 +675,22 @@ pub fn distribution_cdf(
     let d = read_distribution(&distribution)?;
     check_finite("x", x)?;
     Ok(d.cdf(x))
+}
+
+/// `P(X > x)`: the upper tail, formed directly. `1 − distribution_cdf(…)` is 0
+/// once the CDF is within 1e-16 of 1 (a normal beyond 8σ); this is still a
+/// number there, to relative precision.
+///
+/// # Errors
+/// As [`distribution_cdf`].
+#[wasm_bindgen]
+pub fn distribution_survival(
+    #[wasm_bindgen(unchecked_param_type = "DistributionSpec")] distribution: JsValue,
+    x: f64,
+) -> Result<f64, JsValue> {
+    let d = read_distribution(&distribution)?;
+    check_finite("x", x)?;
+    Ok(d.survival(x))
 }
 
 /// The `x` with `P(X ≤ x) = p`.
@@ -1201,8 +1258,10 @@ mod engine_card_tests {
         let two =
             |a: &'static str, b: &'static str| vec![arg(a, s.of::<f64>()), arg(b, s.of::<f64>())];
         s.op("t_distribution_cdf", two("t", "df"), s.of::<f64>());
+        s.op("t_distribution_sf", two("t", "df"), s.of::<f64>());
         s.op("t_distribution_quantile", two("p", "df"), s.of::<f64>());
         s.op("chi_squared_cdf", two("x", "k"), s.of::<f64>());
+        s.op("chi_squared_sf", two("x", "k"), s.of::<f64>());
         s.op("chi_squared_quantile", two("p", "k"), s.of::<f64>());
         let three = |a: &'static str| {
             vec![
@@ -1212,6 +1271,7 @@ mod engine_card_tests {
             ]
         };
         s.op("f_distribution_cdf", three("x"), s.of::<f64>());
+        s.op("f_distribution_sf", three("x"), s.of::<f64>());
         s.op("f_distribution_quantile", three("p"), s.of::<f64>());
         let distribution = || arg("distribution", s.of::<DistributionSpec>());
         s.op(
@@ -1221,6 +1281,11 @@ mod engine_card_tests {
         );
         s.op(
             "distribution_cdf",
+            vec![distribution(), arg("x", s.of::<f64>())],
+            s.of::<f64>(),
+        );
+        s.op(
+            "distribution_survival",
             vec![distribution(), arg("x", s.of::<f64>())],
             s.of::<f64>(),
         );

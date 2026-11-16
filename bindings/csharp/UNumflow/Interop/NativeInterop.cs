@@ -14,6 +14,9 @@ internal static partial class NativeInterop
     public static partial int unumflow_distribution_cdf(string requestJson, out IntPtr resultPtr);
 
     [LibraryImport(DllName, StringMarshalling = StringMarshalling.Utf8)]
+    public static partial int unumflow_distribution_survival(string requestJson, out IntPtr resultPtr);
+
+    [LibraryImport(DllName, StringMarshalling = StringMarshalling.Utf8)]
     public static partial int unumflow_distribution_quantile(string requestJson, out IntPtr resultPtr);
 
     [LibraryImport(DllName, StringMarshalling = StringMarshalling.Utf8)]

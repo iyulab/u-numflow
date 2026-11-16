@@ -184,9 +184,12 @@ rather than returning `NaN`:
 | Function | Returns |
 |---|---|
 | `inverse_normal_cdf(p)` | `z` with `P(Z ≤ z) = p` |
-| `t_distribution_cdf(t, df)` / `t_distribution_quantile(p, df)` | Student's t; a two-sided critical value at level α is `t_distribution_quantile(1 − α/2, df)` |
-| `f_distribution_cdf(x, df1, df2)` / `f_distribution_quantile(p, df1, df2)` | F |
-| `chi_squared_cdf(x, k)` / `chi_squared_quantile(p, k)` | χ² |
+| `t_distribution_cdf(t, df)` / `t_distribution_sf(t, df)` / `t_distribution_quantile(p, df)` | Student's t; a two-sided critical value at level α is `t_distribution_quantile(1 − α/2, df)`, a two-sided p-value `2 · t_distribution_sf(abs(t), df)` |
+| `f_distribution_cdf(x, df1, df2)` / `f_distribution_sf(x, df1, df2)` / `f_distribution_quantile(p, df1, df2)` | F |
+| `chi_squared_cdf(x, k)` / `chi_squared_sf(x, k)` / `chi_squared_quantile(p, k)` | χ² |
+
+`*_sf` is the upper tail `P(X > x)`, computed directly: `1 - *_cdf(…)` is `0` once the CDF is within
+1e-16 of 1, and a p-value below that is still a number here, to relative precision.
 
 `p` must lie strictly between 0 and 1 and every degrees-of-freedom argument must be a
 finite number `> 0` (fractional values are allowed).
@@ -214,6 +217,7 @@ Any of the crate's distributions by specification — `distribution` is an objec
 | Function | Returns |
 |---|---|
 | `distribution_cdf(distribution, x)` | `P(X ≤ x)` |
+| `distribution_survival(distribution, x)` | `P(X > x)`, formed directly — keeps its digits where `1 − P(X ≤ x)` is `0` |
 | `distribution_quantile(distribution, p)` | `x` with `P(X ≤ x) = p`, `p` strictly inside (0, 1) |
 | `distribution_sample(distribution, n, seed)` | `Float64Array` of `n` variates — the same `(distribution, n, seed)` always gives the same values |
 
