@@ -795,12 +795,11 @@ fn the_beta_holds_its_digits_to_a_shape_of_1e14() {
 }
 
 /// Series and continued fraction hold `~1.5e-10` to 1e10; from there the
-/// Wilson–Hilferty limit (`8e-10` of the smaller tail at 1e10 on Windows, up to
-/// `1.1e-9` on Linux and macOS, measured in CI: the limit forms `cbrt(x/a) - 1`
-/// at a shape of 1e10, where a one-ulp difference between the platforms' cube roots
-/// moves the score by `~3e-11` and a tail of 1e-8 is `~6` standard deviations out —
-/// the likely cause, not isolated). The bound is the beta's, 1.5e-9, so it holds on
-/// every platform.
+/// Wilson–Hilferty limit, `8.6e-10` of the smaller tail at the worst row of 1e10 -- the limit's own
+/// error (O(1/a)), the same on every platform now that its score is formed as
+/// `expm1(ln1p((x − a)/a) / 3)` and not as `cbrt(x/a) - 1`, whose one-ulp difference between
+/// platforms' cube roots (`~3e-11` of score at a shape of 1e10, a tail of 1e-8 being `~6` standard
+/// deviations out) had made it up to `1.1e-9` on Linux and macOS.
 #[test]
 fn the_gamma_holds_its_digits_to_a_shape_of_1e10() {
     for &(x, a, p, q) in &GAMMA {
@@ -811,6 +810,6 @@ fn the_gamma_holds_its_digits_to_a_shape_of_1e10() {
             let g = regularized_upper_gamma(a, x);
             (g, rel(g, q, p))
         };
-        assert!(e <= 1.5e-9, "P/Q({a:e}, {x:e}) = {got:e}: {e:.2e}");
+        assert!(e <= 9e-10, "P/Q({a:e}, {x:e}) = {got:e}: {e:.2e}");
     }
 }

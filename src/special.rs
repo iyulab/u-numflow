@@ -1045,7 +1045,13 @@ pub fn regularized_upper_gamma(a: f64, x: f64) -> f64 {
 /// Hilferty 1931): `P(a, x) ≈ Φ(z)`, `z = 3 sqrt(a) ((x/a)^(1/3) − 1 + 1/(9a))`,
 /// with error `O(1/a)` -- used where `a` is too large for the series.
 fn gamma_normal_score(a: f64, x: f64) -> f64 {
-    3.0 * a.sqrt() * ((x / a).cbrt() - 1.0 + 1.0 / (9.0 * a))
+    // (x/a)^(1/3) − 1 as expm1(ln1p((x − a)/a) / 3): near the centre the cube root is 1 + 1e-5
+    // and forming it then subtracting 1 leaves one ulp of 1 (1.1e-16) in a quantity of 1e-5,
+    // which the factor 3 sqrt(a) (3e5 at a = 1e10) turns into 3e-11 of score -- and a platform's
+    // cube root differs from another's by that ulp. x − a is exact here (Sterbenz), so the
+    // difference is formed without that loss.
+    let cube_root_less_one = (((x - a) / a).ln_1p() / 3.0).exp_m1();
+    3.0 * a.sqrt() * (cube_root_less_one + 1.0 / (9.0 * a))
 }
 
 /// Series expansion for the regularized lower incomplete gamma.
