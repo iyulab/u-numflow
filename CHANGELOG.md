@@ -8,6 +8,15 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ## [Unreleased]
 
+### Fixed
+
+- The gamma CDF and survival function at shapes of 10¹⁰ and more (the Wilson–Hilferty limit) formed `(x/a)^(1/3) − 1` as
+  `cbrt(x/a) − 1`: one ulp of 1 against a quantity of 10⁻⁵, times `3 √a`, moved the score by `3·10⁻¹¹`, and platforms'
+  cube roots differ by that ulp -- the tail was off by up to `1.1·10⁻⁹` of the smaller tail on Linux and macOS and
+  `8·10⁻¹⁰` on Windows. It is now `expm1(ln1p((x − a)/a) / 3)`: the same on every platform, at most `8.6·10⁻¹⁰` of the
+  smaller tail at the worst of the checked points (the limit's own error, `O(1/a)`). The 0.17.0 note «`1.5·10⁻¹⁰` to
+  10¹⁰ (gamma)» describes the series and continued fraction below 10¹⁰; from 10¹⁰ the limit holds about `9·10⁻¹⁰`.
+
 ## [0.17.0] - 2026-11-16
 
 ### Added
